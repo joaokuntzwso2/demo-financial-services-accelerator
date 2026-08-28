@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+umask 077
 ROOT="$(cd "$(dirname "$0")" && pwd)"; cd "$ROOT"
 [[ -f .env ]] || cp .env.example .env
+chmod 600 .env 2>/dev/null || true
+chmod 600 .env 2>/dev/null || true
 source scripts/common.sh
 ./scripts/check-prereqs.sh
 ./scripts/generate-certs.sh

@@ -5,11 +5,26 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 VER="${FS_APIM_MEDIATION_POLICIES_VERSION:-1.0.0}"
+MODE="${APIM_POLICIES_SOURCE_MODE:-source}"
 REF="${FS_APIM_MEDIATION_POLICIES_GIT_REF:-v${VER}}"
 ZIP="dist/fs-apim-mediation-artifacts-${VER}.zip"
 CACHE=".cache/financial-services-apim-mediation-policies-${VER}"
 
 mkdir -p dist .cache .cache/m2
+
+if [[ "$MODE" == "local" ]]; then
+  [[ -s "$ZIP" ]] && unzip -tq "$ZIP" >/dev/null 2>&1 || {
+    echo "ERROR: local APIM mediation artifact is missing or invalid: $ZIP" >&2
+    exit 1
+  }
+  echo "==> Using local Financial Services APIM mediation artifacts ${VER}"
+  exit 0
+fi
+
+[[ "$MODE" == "source" ]] || {
+  echo "ERROR: unsupported APIM_POLICIES_SOURCE_MODE=$MODE (supported: source, local)" >&2
+  exit 1
+}
 
 if [[ -s "$ZIP" ]] && unzip -tq "$ZIP" >/dev/null 2>&1; then
   echo "==> Financial Services APIM mediation artifacts ${VER} already present"

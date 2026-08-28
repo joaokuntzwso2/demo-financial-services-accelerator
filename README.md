@@ -1,20 +1,20 @@
-# WSO2 Open Banking E2E Demo — APIM 4.7 + IS 7.3 + Financial Services Accelerator 4.0
+# WSO2 Open Banking E2E Demo — APIM 4.6 + IS 7.2 + Financial Services Accelerator 4.0
 
 A reproducible local banking demo that combines:
 
-- WSO2 API Manager **4.7.0** in Docker
-- WSO2 Identity Server **7.3.0** in Docker
+- WSO2 API Manager **4.6.0** in Docker
+- WSO2 Identity Server **7.2.0** in Docker
 - WSO2 Financial Services / Open Banking IAM Accelerator **4.0.0** installed into Identity Server
 - WSO2 Financial Services APIM Mediation Policies **1.0.0** installed into API Manager
 - MySQL 8.0 for the APIM/IS/Financial Services databases
 - A realistic Go mock bank backend with Accounts, Balances, Transactions, Payments and Confirmation of Funds data
-- A Go TPP helper for financial-grade client credentials and browser authorization scaffolding
+- Generated TPP mTLS/JWKS artifacts and a shell-based authorization/demo walkthrough
 - Automated certificate generation, trust exchange, DB initialization, IS/APIM integration, API import, policy import/attachment, revision deployment and publication
 - Runtime compatibility gates and smoke tests
 
-> **Compatibility warning — intentional demo constraint**
+> **Compatibility baseline**
 >
-> As of 2026-08-27, WSO2's published Financial Services Accelerator 4.0 compatibility matrix documents base products only through **APIM 4.6.0** and **IS 7.2.0**. This repository intentionally targets **APIM 4.7.0 + IS 7.3.0** because that is the requested demo combination. `./start.sh` therefore treats the combination as an explicit compatibility experiment and performs runtime gates. Do not present it as a WSO2-certified production matrix unless WSO2 confirms support for the exact update levels you deploy.
+> Financial Services Accelerator 4.0 is run with the published compatible pair **API Manager 4.6.0 + Identity Server 7.2.0**. The demo still contains intentionally relaxed local-only security settings; see `SECURITY.md` before running it.
 
 > **Build fix (2026-08-27):** the IS Docker image runs the Financial Services IAM Accelerator `merge.sh` from the accelerator `bin/` directory, as required by WSO2. This avoids the `Product home is: /` / `not a valid carbon product path` failure.
 
@@ -48,9 +48,9 @@ cp .env.example .env
 The script performs:
 
 1. Generates a local demo CA, APIM/IS TLS identities and a TPP mTLS certificate.
-2. Obtains the official IAM Accelerator 4.0.0 ZIP for IS (release download by default, source/local modes available) and prepares the APIM Financial Services Mediation Policies 1.0.0 from the pinned WSO2 source tag.
+2. Obtains the official IAM Accelerator 4.0.0 ZIP for IS (release download by default, local artifact mode also available) and prepares the APIM Financial Services Mediation Policies 1.0.0 from the pinned WSO2 source tag.
 3. Downloads the supported MySQL Connector/J and the WSO2 IS→APIM token-revocation event handler.
-4. Builds IS 7.3 with the IAM Accelerator `merge.sh`; builds APIM 4.7 with the Financial Services mediation-policy JARs, custom sequences and policy templates in the documented APIM locations.
+4. Builds IS 7.2 with the IAM Accelerator `merge.sh`; builds APIM 4.6 with the Financial Services mediation-policy JARs, custom sequences and policy templates in the documented APIM locations.
 5. Starts MySQL and the Go bank backend.
 6. Initializes all APIM, IS and Financial Services schemas from the actual built product images.
 7. Starts IS, then APIM.
@@ -156,14 +156,7 @@ ACCELERATOR_SOURCE_MODE=release
 FS_ACCELERATOR_GIT_REF=v4.0.0
 ```
 
-To build the IAM Accelerator from source instead:
-
-```bash
-ACCELERATOR_SOURCE_MODE=source
-FS_ACCELERATOR_GIT_REF=v4.0.0
-```
-
-The source build runs inside Docker with Java 17, Maven, Node and npm. Node/npm are required by the Accelerator's React/self-care portal modules. The build command is `mvn clean install`; the stale `-P solution` invocation is intentionally not used.
+For the IAM Accelerator, this repository supports `release` and `local` input modes. Source-building the full IAM Accelerator is intentionally outside the demo's startup path.
 
 For an air-gapped/controlled environment, pre-place the IAM artifact and mediation artifact in `dist/` and configure local modes:
 
@@ -199,7 +192,7 @@ A container being `Up` is insufficient. `scripts/verify.sh` checks:
 - TLS trust and mTLS material
 - presence of Financial Services mediation-policy resources installed into APIM
 
-This is deliberate because the requested APIM 4.7 / IS 7.3 pairing is newer than the Accelerator 4.0 published compatibility matrix.
+This is deliberate even on the supported APIM 4.6 / IS 7.2 baseline: a container being up is not sufficient proof that the Financial Services integration is correctly installed.
 
 ## Production differences
 

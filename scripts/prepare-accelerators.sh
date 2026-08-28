@@ -5,10 +5,25 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 VER="${FS_ACCELERATOR_VERSION:-4.0.0}"
+MODE="${ACCELERATOR_SOURCE_MODE:-release}"
 ZIP="dist/wso2-fsiam-accelerator-${VER}.zip"
 TMP="${ZIP}.part"
 
 mkdir -p dist
+
+if [[ "$MODE" == "local" ]]; then
+  [[ -s "$ZIP" ]] && unzip -tq "$ZIP" >/dev/null 2>&1 || {
+    echo "ERROR: local IAM Accelerator artifact is missing or invalid: $ZIP" >&2
+    exit 1
+  }
+  echo "==> Using local WSO2 Financial Services IAM Accelerator ${VER}"
+  exit 0
+fi
+
+[[ "$MODE" == "release" ]] || {
+  echo "ERROR: unsupported ACCELERATOR_SOURCE_MODE=$MODE (supported: release, local)" >&2
+  exit 1
+}
 
 if [[ -s "$ZIP" ]] && unzip -tq "$ZIP" >/dev/null 2>&1; then
   echo "==> WSO2 Financial Services IAM Accelerator ${VER} already present"

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+umask 077
 source "$(dirname "$0")/common.sh"
 need openssl; need xxd; need docker
 D=.state/certs

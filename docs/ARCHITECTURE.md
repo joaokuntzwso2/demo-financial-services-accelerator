@@ -5,7 +5,7 @@ External TPP / FinLink
      |  mTLS + OAuth2/FAPI token + consent_id
      v
 +--------------------------+
-| WSO2 API Manager 4.7     |
+| WSO2 API Manager 4.6     |
 | Publisher / DevPortal    |
 | Classic Gateway          |
 | FS mediation policies    |
@@ -14,7 +14,7 @@ External TPP / FinLink
               | consent validation + consent CRUD routing
               v
 +--------------------------+
-| WSO2 Identity Server 7.3 |
+| WSO2 Identity Server 7.2 |
 | OAuth2/OIDC/FAPI AS      |
 | SCA / customer login     |
 | FS consent + eventing    |

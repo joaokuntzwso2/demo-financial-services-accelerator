@@ -60,7 +60,7 @@ pool_options.maxWait = "60000"
 pool_options.testOnBorrow = true
 pool_options.validationQuery = "SELECT 1"
 
-# APIM 4.7 / IS 7.x Key Manager connector prerequisites.
+# APIM 4.6 / IS 7.x Key Manager connector prerequisites.
 [oauth]
 authorize_all_scopes = true
 drop_unregistered_scopes = true

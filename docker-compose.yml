@@ -13,7 +13,7 @@ services:
       MYSQL_USER: ${MYSQL_APP_USER:-wso2}
       MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD:-wso2}
     ports:
-      - "${MYSQL_HOST_PORT:-33060}:3306"
+      - "127.0.0.1:${MYSQL_HOST_PORT:-33060}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./config/mysql/00-create-databases.sql:/docker-entrypoint-initdb.d/00-create-databases.sql:ro
@@ -33,7 +33,7 @@ services:
       LISTEN_ADDR: ":8080"
       SEED: "20260827"
     ports:
-      - "${BANK_BACKEND_PORT:-8080}:8080"
+      - "127.0.0.1:${BANK_BACKEND_PORT:-8080}:8080"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
       interval: 5s
@@ -58,7 +58,7 @@ services:
     environment:
       JAVA_OPTS: "-Xms1g -Xmx2g"
     ports:
-      - "${IS_HTTPS_PORT:-9446}:9446"
+      - "127.0.0.1:${IS_HTTPS_PORT:-9446}:9446"
     healthcheck:
       test: ["CMD-SHELL", "curl -ksSf https://localhost:9446/oauth2/jwks >/dev/null || exit 1"]
       interval: 15s
@@ -89,8 +89,8 @@ services:
     environment:
       JAVA_OPTS: "-Xms1g -Xmx3g"
     ports:
-      - "${APIM_HTTPS_PORT:-9443}:9443"
-      - "${APIM_GATEWAY_HTTPS_PORT:-8243}:8243"
+      - "127.0.0.1:${APIM_HTTPS_PORT:-9443}:9443"
+      - "127.0.0.1:${APIM_GATEWAY_HTTPS_PORT:-8243}:8243"
     healthcheck:
       test: ["CMD-SHELL", "curl -ksSf https://localhost:9443/services/Version >/dev/null || curl -ksSf https://localhost:9443/publisher >/dev/null || exit 1"]
       interval: 15s
@@ -124,7 +124,6 @@ services:
       - ./apis:/workspace/apis:ro
       - ./.state/policies:/workspace/policies:ro
       - ./.state/bootstrap:/workspace/state
-      - ./.state/certs:/workspace/certs:ro
     networks: [obnet]
 
 networks:

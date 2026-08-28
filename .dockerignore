@@ -1,0 +1,26 @@
+# VCS / editor / local environment
+.git
+.git/**
+.env
+.env.*
+.vscode/
+.idea/
+.DS_Store
+
+# Local troubleshooting / generated state
+diagnostics/
+RECOVERY-NOTES.md
+.backup-*/
+.cache/
+tmp/
+.tmp/
+*.log
+
+# Do not send runtime state or private demo keys to Docker build context.
+# Root WSO2 image builds need only these three generated PKCS#12 inputs.
+.state/*
+!.state/certs/
+.state/certs/*
+!.state/certs/wso2apim.p12
+!.state/certs/wso2is.p12
+!.state/certs/client-truststore.p12

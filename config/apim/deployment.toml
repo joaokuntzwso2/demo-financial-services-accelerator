@@ -67,7 +67,7 @@ https_endpoint = "https://localhost:8243"
 websub_event_receiver_http_endpoint = "http://localhost:9021"
 websub_event_receiver_https_endpoint = "https://localhost:8021"
 
-# APIM 4.7 tenant/key-manager integration with IS 7.x.
+# APIM 4.6 tenant/key-manager integration with IS 7.x.
 [[apim.tenant_sharing]]
 type = "WSO2-IS-7"
 [apim.tenant_sharing.properties]
