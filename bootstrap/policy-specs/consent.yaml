@@ -1,0 +1,12 @@
+category: Security
+name: consentEnforcementPolicy
+displayName: Consent Enforcement Policy
+version: v1
+description: Calls the Financial Services consent validation service before protected resource access.
+applicableFlows: [request]
+supportedGateways: [Synapse]
+supportedApiTypes: [HTTP]
+policyAttributes:
+  - {name: consentIdClaimName, displayName: Consent ID Claim Name, description: Claim carrying consent ID, type: String, required: true, defaultValue: consent_id}
+  - {name: consentServiceBasicAuthCredentials, displayName: Consent Service Basic Auth Credentials, description: Base64 basic credentials, type: String, required: true}
+  - {name: consentServiceBaseUrl, displayName: Consent Service Base URL, description: Financial Services consent service URL, type: String, required: true}

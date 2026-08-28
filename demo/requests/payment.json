@@ -1,0 +1,8 @@
+{
+  "ConsentId": "REPLACE_WITH_PAYMENT_CONSENT_ID",
+  "DebtorAccount": "ACC-001",
+  "CreditorName": "Energia Sul",
+  "CreditorAccount": "BR1234567890",
+  "InstructedAmount": {"Amount": "149.90", "Currency": "BRL"},
+  "Reference": "Electricity invoice AUG-2026"
+}

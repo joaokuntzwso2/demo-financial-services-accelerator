@@ -1,0 +1,110 @@
+# -----------------------------------------------------------------------------
+# Local environment / secrets
+# -----------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+!.env.*.example
+.envrc
+.direnv/
+
+# -----------------------------------------------------------------------------
+# Generated demo/runtime state
+# Contains certificates, keystores, generated metadata, tokens and diagnostics.
+# -----------------------------------------------------------------------------
+.state/
+.cache/
+.tmp/
+tmp/
+.local/
+
+# One-off recovery/debug artifacts from local troubleshooting
+RECOVERY-NOTES.md
+diagnostics/
+.backup-*/
+backup/
+backups/
+
+# -----------------------------------------------------------------------------
+# Downloaded / generated WSO2 dependencies and build outputs
+# -----------------------------------------------------------------------------
+dist/*
+!dist/.gitkeep
+backend/bin/
+bin/
+build/
+target/
+out/
+
+*.jar
+*.war
+*.car
+*.aar
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+
+# -----------------------------------------------------------------------------
+# Keys, certificates and trust/key stores
+# Never commit generated demo PKI or private-key material.
+# -----------------------------------------------------------------------------
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.truststore
+*.csr
+*.crt
+*.cer
+*.der
+
+# -----------------------------------------------------------------------------
+# Databases / runtime data
+# -----------------------------------------------------------------------------
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.pid
+
+# -----------------------------------------------------------------------------
+# Logs / reports / temporary files
+# -----------------------------------------------------------------------------
+*.log
+logs/
+coverage/
+.coverage
+htmlcov/
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+*~
+
+# -----------------------------------------------------------------------------
+# Python tooling
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# -----------------------------------------------------------------------------
+# IDE / OS
+# -----------------------------------------------------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+Thumbs.db

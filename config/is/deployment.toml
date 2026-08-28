@@ -1,0 +1,135 @@
+[server]
+offset = 3
+hostname = "wso2is"
+node_ip = "127.0.0.1"
+
+[super_admin]
+username = "admin"
+password = "admin"
+create_admin_account = true
+
+[keystore.primary]
+file_name = "wso2is.p12"
+type = "PKCS12"
+password = "wso2carbon"
+alias = "wso2carbon"
+key_password = "wso2carbon"
+
+[truststore]
+file_name = "client-truststore.p12"
+type = "PKCS12"
+password = "wso2carbon"
+
+[database.identity_db]
+type = "mysql"
+url = "jdbc:mysql://mysql:3306/fs_identitydb?useSSL=false&amp;allowPublicKeyRetrieval=true&amp;serverTimezone=UTC"
+username = "wso2"
+password = "wso2"
+driver = "com.mysql.cj.jdbc.Driver"
+
+[database.shared_db]
+type = "mysql"
+url = "jdbc:mysql://mysql:3306/fs_iskm_configdb?useSSL=false&amp;allowPublicKeyRetrieval=true&amp;serverTimezone=UTC"
+username = "wso2"
+password = "wso2"
+driver = "com.mysql.cj.jdbc.Driver"
+
+[database.config]
+type = "mysql"
+url = "jdbc:mysql://mysql:3306/fs_iskm_configdb?useSSL=false&amp;allowPublicKeyRetrieval=true&amp;serverTimezone=UTC"
+username = "wso2"
+password = "wso2"
+driver = "com.mysql.cj.jdbc.Driver"
+
+[database.user]
+type = "mysql"
+url = "jdbc:mysql://mysql:3306/fs_userdb?useSSL=false&amp;allowPublicKeyRetrieval=true&amp;serverTimezone=UTC"
+username = "wso2"
+password = "wso2"
+driver = "com.mysql.cj.jdbc.Driver"
+
+[[datasource]]
+id = "WSO2FS_DB"
+url = "jdbc:mysql://mysql:3306/fs_consentdb?useSSL=false&amp;allowPublicKeyRetrieval=true&amp;serverTimezone=UTC"
+username = "wso2"
+password = "wso2"
+driver = "com.mysql.cj.jdbc.Driver"
+jndi_name = "jdbc/WSO2FS_DB"
+pool_options.maxActive = "80"
+pool_options.maxWait = "60000"
+pool_options.testOnBorrow = true
+pool_options.validationQuery = "SELECT 1"
+
+# APIM 4.7 / IS 7.x Key Manager connector prerequisites.
+[oauth]
+authorize_all_scopes = true
+drop_unregistered_scopes = true
+
+[[resource.access_control]]
+context = "(.*)/scim2/Me"
+secure = true
+http_method = "GET"
+cross_tenant = true
+permissions = []
+scopes = []
+
+[[event_listener]]
+id = "token_revocation"
+type = "org.wso2.carbon.identity.core.handler.AbstractIdentityHandler"
+name = "org.wso2.is.notification.ApimOauthEventInterceptor"
+order = 1
+[event_listener.properties]
+notification_endpoint = "https://wso2apim:9443/internal/data/v1/notify"
+username = "admin"
+password = "admin"
+'header.X-WSO2-KEY-MANAGER' = "WSO2-IS"
+
+[role_mgt]
+allow_system_prefix_for_role = true
+
+# Used by APIM's IS 7.x connector / tenant sharing over mTLS.
+[client_certificate_based_authentication]
+enable = true
+log_client_cert_info = true
+
+[[client_certificate_based_authentication.user_thumbprint_mapping]]
+trusted_issuer = "CN=WSO2 Open Banking Demo Root CA, O=WSO2 Demo, C=BR"
+cert_thumbprint = "*"
+allowed_username = ["admin"]
+
+# Financial Services / Open Banking consent experience.
+[authentication.endpoints]
+login_url = "https://localhost:9446/authenticationendpoint/login.do"
+retry_url = "https://localhost:9446/authenticationendpoint/retry.do"
+
+[oauth.endpoints.v2]
+oauth2_consent_page = "https://localhost:9446/fs/authenticationendpoint/oauth2_authz.do"
+oidc_consent_page = "https://localhost:9446/fs/authenticationendpoint/oauth2_consent.do"
+
+[financial_services.consent]
+is_pre_initiated_consent = true
+auth_flow_consent_id_source = "requestObject"
+
+[financial_services.consent.portal.params]
+identity_server_base_url = "https://localhost:9446"
+
+[financial_services.consent.consent_id_extraction]
+json_path = "/id_token/openbanking_intent_id/value"
+
+[financial_services.identity]
+consent_id_claim_name = "consent_id"
+append_consent_id_to_access_token = true
+append_consent_id_to_authz_id_token = true
+
+[financial_services.http_connection_pool]
+max_connections = 200
+max_connections_per_route = 100
+connection_timeout = 20000
+socket_timeout = 20000
+
+[application_mgt]
+enable_role_validation = true
+
+# Demo-friendly Open Banking DCR setup. For production, point SSA/JWKS to the trusted directory.
+[oauth.dcr]
+ssa_jwks = "http://bank-backend:8080/directory/jwks.json"

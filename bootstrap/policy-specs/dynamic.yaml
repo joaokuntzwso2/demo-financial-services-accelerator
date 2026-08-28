@@ -1,0 +1,13 @@
+category: Mediation
+name: dynamicEndpointPolicy
+displayName: Dynamic Endpoint Policy
+version: v1
+description: Routes consent resources to IS and business resources to the bank backend. Must be last request policy.
+applicableFlows: [request]
+supportedGateways: [Synapse]
+supportedApiTypes: [HTTP]
+policyAttributes:
+  - {name: consentServiceRoutingRegexPattern, displayName: Consent Service Routing Regex Pattern, description: Regex identifying consent resources, type: String, required: true}
+  - {name: consentServiceBasicAuthCredentials, displayName: Consent Service Basic Auth Credentials, description: Base64 basic credentials, type: String, required: true}
+  - {name: consentServiceBaseUrl, displayName: Consent Service Base URL, description: Financial Services consent service URL, type: String, required: true}
+  - {name: bankBackendBaseUrl, displayName: Bank Backend Base URL, description: Bank backend base URL, type: String, required: true}

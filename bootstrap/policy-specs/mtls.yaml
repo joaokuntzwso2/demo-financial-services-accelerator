@@ -1,0 +1,12 @@
+category: Security
+name: mtlsEnforcementPolicy
+displayName: MTLS Enforcement Policy
+version: v1
+description: Enforces mutual TLS for Financial Services API requests.
+applicableFlows: [request]
+supportedGateways: [Synapse]
+supportedApiTypes: [HTTP]
+policyAttributes:
+  - {name: transportCertAsHeaderEnabled, displayName: Transport certificate in header, description: Whether client cert is supplied in a header, type: Boolean, required: false, defaultValue: false}
+  - {name: transportCertHeaderName, displayName: Transport certificate header, description: Header carrying transport certificate, type: String, required: false, defaultValue: x-wso2-client-certificate}
+  - {name: isClientCertificateEncoded, displayName: Encoded transport certificate, description: Whether certificate header is encoded, type: Boolean, required: false, defaultValue: false}

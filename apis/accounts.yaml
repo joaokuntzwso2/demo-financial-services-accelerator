@@ -1,0 +1,73 @@
+openapi: 3.0.3
+info:
+  title: Acme Bank Accounts API
+  version: 3.1.0
+  description: Open Banking-style account information demo API.
+servers:
+  - url: https://localhost:8243/open-banking/v3.1/aisp
+paths:
+  /account-access-consents:
+    post:
+      summary: Create account access consent
+      security: [{OAuth2: [accounts]}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AccountConsent'}}}}
+      responses: {'201': {description: Consent created}}
+  /account-access-consents/{ConsentId}:
+    get:
+      summary: Get account access consent
+      security: [{OAuth2: [accounts]}]
+      parameters: [{name: ConsentId, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Consent}}
+    delete:
+      summary: Revoke account access consent
+      security: [{OAuth2: [accounts]}]
+      parameters: [{name: ConsentId, in: path, required: true, schema: {type: string}}]
+      responses: {'204': {description: Revoked}}
+  /accounts:
+    get:
+      summary: List consented accounts
+      security: [{OAuth2: [accounts]}]
+      responses: {'200': {description: Accounts, content: {application/json: {schema: {type: object}}}}}
+  /accounts/{AccountId}:
+    get:
+      security: [{OAuth2: [accounts]}]
+      parameters: [{name: AccountId, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Account}}
+  /accounts/{AccountId}/balances:
+    get:
+      security: [{OAuth2: [accounts]}]
+      parameters: [{name: AccountId, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Balances}}
+  /accounts/{AccountId}/transactions:
+    get:
+      security: [{OAuth2: [accounts]}]
+      parameters: [{name: AccountId, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Transactions}}
+  /accounts/{AccountId}/beneficiaries:
+    get:
+      security: [{OAuth2: [accounts]}]
+      parameters: [{name: AccountId, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Beneficiaries}}
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://localhost:9446/oauth2/authorize
+          tokenUrl: https://localhost:9446/oauth2/token
+          scopes: {accounts: Read bank accounts subject to consent}
+  schemas:
+    AccountConsent:
+      type: object
+      required: [Data, Risk]
+      properties:
+        Data:
+          type: object
+          required: [Permissions]
+          properties:
+            Permissions:
+              type: array
+              minItems: 1
+              items: {type: string}
+        Risk: {type: object, additionalProperties: true}

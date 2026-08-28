@@ -1,0 +1,54 @@
+openapi: 3.0.3
+info: {title: Acme Bank Payments API, version: 3.1.0, description: Open Banking-style payment initiation demo API.}
+servers: [{url: https://localhost:8243/open-banking/v3.1/pisp}]
+paths:
+  /payment-consents:
+    post:
+      summary: Create payment consent
+      security: [{OAuth2: [payments]}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses: {'201': {description: Consent created}}
+  /payment-consents/{ConsentId}:
+    get:
+      security: [{OAuth2: [payments]}]
+      parameters: [{name: ConsentId, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Consent}}
+  /domestic-payments:
+    post:
+      summary: Initiate domestic payment after authorization
+      security: [{OAuth2: [payments]}]
+      parameters:
+        - {name: x-idempotency-key, in: header, required: true, schema: {type: string}}
+        - {name: x-fapi-interaction-id, in: header, required: false, schema: {type: string}}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Payment'}}}}
+      responses: {'201': {description: Payment accepted}}
+  /domestic-payments/{PaymentId}:
+    get:
+      security: [{OAuth2: [payments]}]
+      parameters: [{name: PaymentId, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Payment status}}
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://localhost:9446/oauth2/authorize
+          tokenUrl: https://localhost:9446/oauth2/token
+          scopes: {payments: Initiate payments subject to consent}
+  schemas:
+    Payment:
+      type: object
+      required: [DebtorAccount, CreditorName, CreditorAccount, InstructedAmount]
+      properties:
+        ConsentId: {type: string}
+        DebtorAccount: {type: string}
+        CreditorName: {type: string}
+        CreditorAccount: {type: string}
+        Reference: {type: string}
+        InstructedAmount:
+          type: object
+          required: [Amount, Currency]
+          properties:
+            Amount: {type: string, pattern: '^[0-9]+\\.[0-9]{2}$'}
+            Currency: {type: string, minLength: 3, maxLength: 3}

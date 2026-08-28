@@ -1,0 +1,127 @@
+[server]
+hostname = "wso2apim"
+node_ip = "127.0.0.1"
+server_role = "default"
+
+[super_admin]
+username = "admin"
+password = "admin"
+create_admin_account = true
+
+[keystore.primary]
+file_name = "wso2apim.p12"
+type = "PKCS12"
+password = "wso2carbon"
+alias = "wso2carbon"
+key_password = "wso2carbon"
+
+[truststore]
+file_name = "client-truststore.jks"
+type = "JKS"
+password = "wso2carbon"
+
+[database.apim_db]
+type = "mysql"
+url = "jdbc:mysql://mysql:3306/fs_apimgtdb?useSSL=false&amp;allowPublicKeyRetrieval=true&amp;serverTimezone=UTC"
+username = "wso2"
+password = "wso2"
+driver = "com.mysql.cj.jdbc.Driver"
+
+[database.shared_db]
+type = "mysql"
+url = "jdbc:mysql://mysql:3306/fs_am_configdb?useSSL=false&amp;allowPublicKeyRetrieval=true&amp;serverTimezone=UTC"
+username = "wso2"
+password = "wso2"
+driver = "com.mysql.cj.jdbc.Driver"
+
+[database.config]
+type = "mysql"
+url = "jdbc:mysql://mysql:3306/fs_am_configdb?useSSL=false&amp;allowPublicKeyRetrieval=true&amp;serverTimezone=UTC"
+username = "wso2"
+password = "wso2"
+driver = "com.mysql.cj.jdbc.Driver"
+
+[database.user]
+type = "mysql"
+url = "jdbc:mysql://mysql:3306/fs_am_userdb?useSSL=false&amp;allowPublicKeyRetrieval=true&amp;serverTimezone=UTC"
+username = "wso2"
+password = "wso2"
+driver = "com.mysql.cj.jdbc.Driver"
+
+[apim]
+gateway_type = "Regular,APK"
+
+[[apim.gateway.environment]]
+name = "Default"
+type = "hybrid"
+display_in_api_console = true
+description = "Open Banking demo gateway"
+show_as_token_endpoint_url = true
+service_url = "https://wso2apim:9443/services/"
+username = "${admin.username}"
+password = "${admin.password}"
+ws_endpoint = "ws://localhost:9099"
+wss_endpoint = "wss://localhost:8099"
+http_endpoint = "http://localhost:8280"
+https_endpoint = "https://localhost:8243"
+websub_event_receiver_http_endpoint = "http://localhost:9021"
+websub_event_receiver_https_endpoint = "https://localhost:8021"
+
+# APIM 4.7 tenant/key-manager integration with IS 7.x.
+[[apim.tenant_sharing]]
+type = "WSO2-IS-7"
+[apim.tenant_sharing.properties]
+identity_server_base_url = "https://wso2is:9446"
+username = "admin"
+password = "admin"
+enable_tenant_sync = false
+auto_configure_key_manager = true
+
+[apim.key_manager]
+skip_create_resident_key_manager = true
+
+# Accelerator policy support.
+[apim.policy]
+enable_api_level_policies = true
+
+# Validate certificate chains for Financial Services mTLS use cases.
+[apimgt.mutual_ssl]
+enable_certificate_chain_validation = true
+
+# Keep gateway analytics/error visibility useful for the demo.
+[apim.cors]
+allow_origins = "*"
+allow_methods = ["GET","PUT","POST","DELETE","PATCH","OPTIONS"]
+allow_headers = ["authorization","Access-Control-Allow-Origin","Content-Type","SOAPAction","apikey","Internal-Key","x-fapi-financial-id","x-fapi-interaction-id","x-idempotency-key"]
+allow_credentials = false
+
+[[event_handler]]
+name = "userPostSelfRegistration"
+subscriptions = ["POST_ADD_USER"]
+
+# Financial Services mediation artifacts: preserve the custom error formatter
+# across runtime-artifact synchronization.
+[apim.sync_runtime_artifacts.gateway]
+skip_list.sequences = ["customErrorFormatter.xml"]
+
+# Preserve Authorization at the gateway and permit Financial Services scopes.
+[apim.oauth_config]
+enable_outbound_auth_header = true
+white_listed_scopes = ["^device_.*", "openid", "^FS_.*", "^TIME_.*"]
+
+# Financial-grade APIs frequently exchange JWT/JWS content types.
+[[blocking.custom_message_formatters]]
+class = "org.apache.axis2.format.PlainTextFormatter"
+content_type = "application/jwt"
+
+[[blocking.custom_message_builders]]
+class = "org.apache.axis2.format.PlainTextBuilder"
+content_type = "application/jwt"
+
+[[custom_message_formatters]]
+class = "org.apache.axis2.format.PlainTextFormatter"
+content_type = "application/jwt"
+
+[[custom_message_builders]]
+class = "org.apache.axis2.format.PlainTextBuilder"
+content_type = "application/jwt"
