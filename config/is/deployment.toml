@@ -1,6 +1,7 @@
 [server]
 offset = 3
-hostname = "wso2is"
+hostname = "localhost"
+internal_hostname = "wso2is"
 node_ip = "127.0.0.1"
 
 [super_admin]

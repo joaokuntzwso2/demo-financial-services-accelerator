@@ -26,6 +26,11 @@ docker compose up -d wso2apim
 ./scripts/extract-policies.sh
 log "Bootstrapping IS/APIM integration, APIs, policies, revisions and publication"
 docker compose --profile tools run --rm bootstrap
+
+# Bootstrap demo identities, APIM application, subscriptions, keys and RBAC.
+echo
+echo "==> Bootstrapping demo users and API access"
+./scripts/bootstrap-demo-access.sh .
 ./scripts/verify.sh
 cat <<EOF
 

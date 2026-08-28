@@ -1,5 +1,6 @@
 [server]
-hostname = "wso2apim"
+hostname = "localhost"
+internal_hostname = "wso2apim"
 node_ip = "127.0.0.1"
 server_role = "default"
 

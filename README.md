@@ -215,3 +215,41 @@ This repository is a **technical demo**, not a production topology. A production
 ```
 
 See `docs/ARCHITECTURE.md`, `docs/DEMO-STORY.md`, `docs/COMPATIBILITY.md` and `docs/TROUBLESHOOTING.md` before presenting the demo.
+
+
+## Automatic demo identities and application
+
+`./start.sh` automatically bootstraps the API-consumer side of the demo after
+the WSO2 runtimes and Open Banking APIs are ready.
+
+It creates an API Manager application named `OpenBankingDemoApp`, subscribes
+that application to the Open Banking demo APIs, generates Production Keys
+through `WSO2-IS-7`, and configures the corresponding Identity Server
+application for application-level RBAC.
+
+Four deterministic demo personas are provisioned:
+
+| User | Password | Permissions |
+| --- | --- | --- |
+| `alice` | `Alice@12345` | `accounts` |
+| `bob` | `Bob@12345` | `payments` |
+| `carol` | `Carol@12345` | `fundsconfirmations` |
+| `demo` | `Demo@12345` | `accounts`, `payments`, `fundsconfirmations` |
+
+Runtime-only application credentials and short-lived test tokens are written
+under `.state/demo-access/`, which is intentionally ignored by Git.
+
+To mint a fresh token after startup:
+
+```bash
+./scripts/demo-token.sh alice accounts
+./scripts/demo-token.sh bob payments
+./scripts/demo-token.sh carol fundsconfirmations
+./scripts/demo-token.sh demo "accounts payments fundsconfirmations"
+```
+
+The bootstrap validates that JWTs contain the expected public issuer
+(`https://localhost:9446/oauth2/token`), the generated `client_id`, and every
+requested `scope` claim. Consent-specific claims are not statically assigned
+to users; those are created by the Financial Services consent/authorization
+flow.
