@@ -108,3 +108,13 @@ venv/
 *.swp
 *.swo
 Thumbs.db
+
+# Pinned compatibility artifacts required for the tested
+# APIM 4.6.0 + IS 7.2.0 + FS Accelerator 4.0.0 demo.
+!vendor/
+!vendor/compat/
+!vendor/compat/apim/
+!vendor/compat/is/
+!vendor/compat/apim/*.jar
+!vendor/compat/is/*.jar
+!vendor/compat/SHA256SUMS

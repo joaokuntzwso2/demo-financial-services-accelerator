@@ -1,0 +1,189 @@
+diff --git a/components/wso2is7.key.manager/src/main/java/org/wso2/is7/client/WSO2IS7KeyManager.java b/components/wso2is7.key.manager/src/main/java/org/wso2/is7/client/WSO2IS7KeyManager.java
+index f85f67e..008c6a6 100644
+--- a/components/wso2is7.key.manager/src/main/java/org/wso2/is7/client/WSO2IS7KeyManager.java
++++ b/components/wso2is7.key.manager/src/main/java/org/wso2/is7/client/WSO2IS7KeyManager.java
+@@ -252,7 +252,7 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
+             if (grantString.startsWith(",")) {
+                 grantString = grantString.substring(1);
+             }
+-            String[] grantTypes = grantString.split(",");
++            String[] grantTypes = grantString.trim().split("\\s*,\\s*|\\s+");
+             clientInfo.setGrantTypes(Arrays.asList(grantTypes));
+         }
+         if (StringUtils.isNotEmpty(info.getCallBackURL())) {
+@@ -287,7 +287,126 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
+         Map<String, Object> additionalProperties = new HashMap<>();
+         if (parameter instanceof String) {
+             additionalProperties = new Gson().fromJson((String) parameter, Map.class);
++        } else if (parameter instanceof Map) {
++            Map<?, ?> parameterMap = (Map<?, ?>) parameter;
++            for (Map.Entry<?, ?> entry : parameterMap.entrySet()) {
++                if (entry.getKey() != null) {
++                    additionalProperties.put(
++                            String.valueOf(entry.getKey()), entry.getValue());
++                }
++            }
++        }
++
++        /*
++         * Financial Services regulatory applications arrive from APIM with
++         * "regulatory=true" and the TPP certificate in "sp_certificate".
++         * Translate that FS metadata into the native IS FAPI DCR fields.
++         */
++        Object regulatoryProperty = additionalProperties.get("regulatory");
++        boolean regulatoryApplication =
++                regulatoryProperty != null &&
++                Boolean.parseBoolean(String.valueOf(regulatoryProperty));
++
++        if (regulatoryApplication) {
++
++            clientInfo.setTokenEndpointAuthMethod("tls_client_auth");
++            clientInfo.setTlsClientCertificateBoundAccessTokens(true);
++
++            clientInfo.setRequestObjectSigningAlg("PS256");
++            clientInfo.setIdTokenSignedResponseAlg("PS256");
++
++            clientInfo.setRequireSignedRequestObject(true);
++            clientInfo.setRequirePushedAuthorizationRequests(true);
++
++            clientInfo.setSubjectType("public");
++
++            Object certificateProperty =
++                    additionalProperties.get("sp_certificate");
++
++            if (certificateProperty == null ||
++                    StringUtils.isBlank(String.valueOf(certificateProperty))) {
++
++                throw new APIManagementException(
++                        "Regulatory application is missing sp_certificate");
++            }
++
++            String certificatePem =
++                    String.valueOf(certificateProperty);
++
++            try (InputStream certificateStream =
++                         new ByteArrayInputStream(
++                                 certificatePem.getBytes(
++                                         StandardCharsets.UTF_8))) {
++
++                CertificateFactory certificateFactory =
++                        CertificateFactory.getInstance("X.509");
++
++                X509Certificate certificate =
++                        (X509Certificate)
++                                certificateFactory.generateCertificate(
++                                        certificateStream);
++
++                clientInfo.setTlsClientAuthSubjectDn(
++                        certificate.getSubjectDN().toString());
++
++            } catch (CertificateException | IOException e) {
++                throw new APIManagementException(
++                        "Unable to derive TLS client subject DN " +
++                        "from regulatory application certificate", e);
++            }
+         }
++        /*
++         * Propagate Financial Services / FAPI DCR metadata supplied through
++         * APIConstants.JSON_ADDITIONAL_PROPERTIES.
++         *
++         * WSO2IS7ClientInfo already models these fields, but the stock 2.0.8
++         * createClientInfo() does not map them into the outbound DCR payload.
++         */
++        Object fapiProperty = additionalProperties.get("token_endpoint_auth_method");
++        if (fapiProperty != null) {
++            clientInfo.setTokenEndpointAuthMethod(String.valueOf(fapiProperty));
++        }
++
++        fapiProperty = additionalProperties.get("tls_client_auth_subject_dn");
++        if (fapiProperty != null && !regulatoryApplication) {
++            clientInfo.setTlsClientAuthSubjectDn(String.valueOf(fapiProperty));
++        }
++
++        fapiProperty = additionalProperties.get(
++                "tls_client_certificate_bound_access_tokens");
++        if (fapiProperty != null) {
++            clientInfo.setTlsClientCertificateBoundAccessTokens(
++                    Boolean.parseBoolean(String.valueOf(fapiProperty)));
++        }
++
++        fapiProperty = additionalProperties.get("request_object_signing_alg");
++        if (fapiProperty != null) {
++            clientInfo.setRequestObjectSigningAlg(String.valueOf(fapiProperty));
++        }
++
++        fapiProperty = additionalProperties.get("id_token_signed_response_alg");
++        if (fapiProperty != null) {
++            clientInfo.setIdTokenSignedResponseAlg(String.valueOf(fapiProperty));
++        }
++
++        fapiProperty = additionalProperties.get("require_signed_request_object");
++        if (fapiProperty != null) {
++            clientInfo.setRequireSignedRequestObject(
++                    Boolean.parseBoolean(String.valueOf(fapiProperty)));
++        }
++
++        fapiProperty = additionalProperties.get(
++                "require_pushed_authorization_requests");
++        if (fapiProperty != null) {
++            clientInfo.setRequirePushedAuthorizationRequests(
++                    Boolean.parseBoolean(String.valueOf(fapiProperty)));
++        }
++
++        fapiProperty = additionalProperties.get("subject_type");
++        if (fapiProperty != null) {
++            clientInfo.setSubjectType(String.valueOf(fapiProperty));
++        }
++
+         if (additionalProperties.containsKey(WSO2IS7KeyManagerConstants.APPLICATION_TOKEN_LIFETIME)) {
+             Object expiryTimeObject =
+                     additionalProperties.get(WSO2IS7KeyManagerConstants.APPLICATION_TOKEN_LIFETIME);
+@@ -401,6 +520,7 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
+         // Set the display name of the application. This name would appear in the consent page of the app.
+         clientInfo.setApplicationDisplayName(info.getClientName());
+         clientInfo.setExtAllowedAudience("organization");
++
+         return clientInfo;
+     }
+ 
+@@ -442,7 +562,39 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
+         WSO2IS7ClientInfo request = createClientInfo(oAuthApplicationInfo, oauthClientName, true);
+         WSO2IS7ClientInfo createdClient;
+         try {
+-            createdClient = wso2IS7DCRClient.updateApplication(oAuthApplicationInfo.getClientId(), request);
++            /*
++             * IS DCR PUT is replacement-like. APIM application updates do not
++             * carry Financial Services / FAPI metadata, so rebuilding the DTO
++             * only from OAuthApplicationInfo would reset an existing FAPI
++             * client to non-FAPI defaults.
++             *
++             * Read the current DCR representation and preserve the existing
++             * FAPI/security properties while applying the APIM-managed changes.
++             */
++            WSO2IS7ClientInfo currentClient =
++                    wso2IS7DCRClient.getApplication(oAuthApplicationInfo.getClientId());
++
++            if (currentClient != null) {
++                request.setTokenEndpointAuthMethod(
++                        currentClient.getTokenEndpointAuthMethod());
++                request.setTlsClientAuthSubjectDn(
++                        currentClient.getTlsClientAuthSubjectDn());
++                request.setTlsClientCertificateBoundAccessTokens(
++                        currentClient.isTlsClientCertificateBoundAccessTokens());
++                request.setRequestObjectSigningAlg(
++                        currentClient.getRequestObjectSigningAlg());
++                request.setIdTokenSignedResponseAlg(
++                        currentClient.getIdTokenSignedResponseAlg());
++                request.setRequireSignedRequestObject(
++                        currentClient.isRequireSignedRequestObject());
++                request.setRequirePushedAuthorizationRequests(
++                        currentClient.isRequirePushedAuthorizationRequests());
++                request.setSubjectType(
++                        currentClient.getSubjectType());
++            }
++
++            createdClient = wso2IS7DCRClient.updateApplication(
++                    oAuthApplicationInfo.getClientId(), request);
+             return buildDTOFromClientInfo(createdClient, new OAuthApplicationInfo());
+         } catch (KeyManagerClientException e) {
+             handleException("Error occurred while updating OAuth Client : ", e);

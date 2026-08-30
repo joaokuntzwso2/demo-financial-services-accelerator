@@ -64,6 +64,12 @@ ENV WSO2_SERVER_HOME=/home/wso2carbon/wso2is-${IS_VERSION}
 USER root
 COPY --from=configmerge /work/deployment.toml \
   ${WSO2_SERVER_HOME}/repository/conf/deployment.toml
+
+# Replace the accelerator 4.0.0 identity extension with the compatibility
+# build used by this demo. This contains the null-SSA DCR update fix required
+# by WSO2 IS 7.2.
+COPY dist/fs-is-accelerator-libs/org.wso2.financial.services.accelerator.identity.extensions-4.0.0.jar \
+  ${WSO2_SERVER_HOME}/repository/components/dropins/org.wso2.financial.services.accelerator.identity.extensions-4.0.0.jar
 RUN chown wso2carbon:wso2 \
   ${WSO2_SERVER_HOME}/repository/conf/deployment.toml
 USER wso2carbon

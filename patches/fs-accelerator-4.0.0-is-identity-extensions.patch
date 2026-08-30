@@ -1,0 +1,15 @@
+diff --git a/financial-services-accelerator/components/org.wso2.financial.services.accelerator.identity.extensions/src/main/java/org/wso2/financial/services/accelerator/identity/extensions/client/registration/dcr/attribute/filter/FSAdditionalAttributeFilter.java b/financial-services-accelerator/components/org.wso2.financial.services.accelerator.identity.extensions/src/main/java/org/wso2/financial/services/accelerator/identity/extensions/client/registration/dcr/attribute/filter/FSAdditionalAttributeFilter.java
+index 2c25195d..1016383c 100644
+--- a/financial-services-accelerator/components/org.wso2.financial.services.accelerator.identity.extensions/src/main/java/org/wso2/financial/services/accelerator/identity/extensions/client/registration/dcr/attribute/filter/FSAdditionalAttributeFilter.java
++++ b/financial-services-accelerator/components/org.wso2.financial.services.accelerator.identity.extensions/src/main/java/org/wso2/financial/services/accelerator/identity/extensions/client/registration/dcr/attribute/filter/FSAdditionalAttributeFilter.java
+@@ -178,7 +178,9 @@ public class FSAdditionalAttributeFilter implements AdditionalAttributeFilter {
+             throw new DCRMClientException(IdentityCommonConstants.INVALID_CLIENT_METADATA, e.getMessage(), e);
+         }
+ 
+-        Map<String, Object> filteredAttributes = new HashMap<>(ssaParams);
++        Map<String, Object> filteredAttributes = ssaParams == null
++                ? new HashMap<>()
++                : new HashMap<>(ssaParams);
+         Map<String, Object> additionalAttributes = applicationUpdateRequest.getAdditionalAttributes();
+         // Adding fields from the configuration to be stored as SP metadata
+         if (applicationUpdateRequest.getSoftwareStatement() != null) {

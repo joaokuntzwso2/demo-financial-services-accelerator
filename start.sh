@@ -10,6 +10,7 @@ source scripts/common.sh
 ./scripts/generate-certs.sh
 ./scripts/prepare-dependencies.sh
 ./scripts/prepare-accelerators.sh
+./scripts/prepare-compatibility-libs.sh
 ./scripts/prepare-apim-policies.sh
 log "Building Go backend, Identity Server 7.2 + IAM Accelerator, API Manager 4.6 + Financial Services mediation policies, and bootstrap helper"
 docker compose build bank-backend wso2is wso2apim bootstrap

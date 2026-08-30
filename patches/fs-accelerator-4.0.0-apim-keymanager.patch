@@ -1,0 +1,380 @@
+diff --git a/financial-services-accelerator/components/org.wso2.financial.services.accelerator.keymanager/src/main/java/org/wso2/financial/services/accelerator/keymanager/FSKeyManagerConfiguration.java b/financial-services-accelerator/components/org.wso2.financial.services.accelerator.keymanager/src/main/java/org/wso2/financial/services/accelerator/keymanager/FSKeyManagerConfiguration.java
+index 87931f23..3bd8cfbe 100644
+--- a/financial-services-accelerator/components/org.wso2.financial.services.accelerator.keymanager/src/main/java/org/wso2/financial/services/accelerator/keymanager/FSKeyManagerConfiguration.java
++++ b/financial-services-accelerator/components/org.wso2.financial.services.accelerator.keymanager/src/main/java/org/wso2/financial/services/accelerator/keymanager/FSKeyManagerConfiguration.java
+@@ -24,6 +24,8 @@ import org.wso2.carbon.apimgt.api.model.ConfigurationDto;
+ import org.wso2.carbon.apimgt.api.model.KeyManagerConnectorConfiguration;
+ import org.wso2.carbon.apimgt.impl.APIConstants;
+ import org.wso2.carbon.apimgt.impl.jwt.JWTValidatorImpl;
++import org.wso2.financial.services.accelerator.common.config.FinancialServicesConfigurationService;
++import org.wso2.financial.services.accelerator.common.config.FinancialServicesConfigurationServiceImpl;
+ import org.wso2.financial.services.accelerator.keymanager.internal.KeyManagerDataHolder;
+ import org.wso2.financial.services.accelerator.keymanager.utils.FSKeyManagerConstants;
+ import org.wso2.is7.client.WSO2IS7KeyManagerConstants;
+@@ -126,8 +128,15 @@ public class FSKeyManagerConfiguration implements KeyManagerConnectorConfigurati
+                         String.valueOf(false), false, false, Collections.EMPTY_LIST, false);
+         applicationConfigurationsList.add(configurationDtoBypassClientCredentials);
+ 
+-        Map<String, Map<String, String>> keyManagerAdditionalProperties = KeyManagerDataHolder.getInstance()
+-                .getConfigurationService().getKeyManagerConfigs();
++        FinancialServicesConfigurationService configurationService =
++                KeyManagerDataHolder.getInstance().getConfigurationService();
++
++        if (configurationService == null) {
++            configurationService = new FinancialServicesConfigurationServiceImpl();
++        }
++
++        Map<String, Map<String, String>> keyManagerAdditionalProperties =
++                configurationService.getKeyManagerConfigs();
+ 
+         for (Map.Entry<String, Map<String, String>> propertyElement : keyManagerAdditionalProperties.entrySet()) {
+             String propertyName = propertyElement.getKey();
+diff --git a/financial-services-accelerator/components/org.wso2.financial.services.accelerator.keymanager/src/main/java/org/wso2/financial/services/accelerator/keymanager/FSKeyManagerImpl.java b/financial-services-accelerator/components/org.wso2.financial.services.accelerator.keymanager/src/main/java/org/wso2/financial/services/accelerator/keymanager/FSKeyManagerImpl.java
+index 7d7b6dc6..22f3c1e0 100644
+--- a/financial-services-accelerator/components/org.wso2.financial.services.accelerator.keymanager/src/main/java/org/wso2/financial/services/accelerator/keymanager/FSKeyManagerImpl.java
++++ b/financial-services-accelerator/components/org.wso2.financial.services.accelerator.keymanager/src/main/java/org/wso2/financial/services/accelerator/keymanager/FSKeyManagerImpl.java
+@@ -34,6 +34,7 @@ import org.wso2.carbon.apimgt.api.model.OAuthAppRequest;
+ import org.wso2.carbon.apimgt.api.model.OAuthApplicationInfo;
+ import org.wso2.carbon.apimgt.impl.APIConstants;
+ import org.wso2.financial.services.accelerator.common.config.FinancialServicesConfigurationService;
++import org.wso2.financial.services.accelerator.common.config.FinancialServicesConfigurationServiceImpl;
+ import org.wso2.financial.services.accelerator.common.constant.FinancialServicesConstants;
+ import org.wso2.financial.services.accelerator.common.exception.FinancialServicesException;
+ import org.wso2.financial.services.accelerator.common.extension.model.ServiceExtensionTypeEnum;
+@@ -58,8 +59,37 @@ import java.util.Map;
+ public class FSKeyManagerImpl extends WSO2IS7KeyManager {
+ 
+     private static final Log log = LogFactory.getLog(FSKeyManagerImpl.class);
+-    FinancialServicesConfigurationService financialServicesConfigurationService = KeyManagerDataHolder
+-            .getInstance().getConfigurationService();
++
++    /*
++     * Resolve this service lazily.
++     *
++     * The KeyManager implementation can be instantiated before the
++     * FinancialServicesConfigurationService OSGi reference has been
++     * populated in KeyManagerDataHolder. Caching the value here during
++     * object construction can therefore permanently cache null.
++     */
++    private FinancialServicesConfigurationService getFinancialServicesConfigurationService() {
++
++        FinancialServicesConfigurationService service =
++                KeyManagerDataHolder.getInstance().getConfigurationService();
++
++        if (service != null) {
++            return service;
++        }
++
++        /*
++         * The hand-built accelerator bundle can be started without the
++         * FinancialServicesCommonServiceComponent being activated.
++         *
++         * FinancialServicesConfigurationServiceImpl has no injected
++         * dependencies and delegates to the singleton config parser,
++         * so use it directly as a safe fallback.
++         */
++        log.warn("FinancialServicesConfigurationService OSGi service is unavailable; " +
++                "using direct configuration service implementation");
++
++        return new FinancialServicesConfigurationServiceImpl();
++    }
+ 
+     @Override
+     public AccessTokenInfo getNewApplicationAccessToken(AccessTokenRequest tokenRequest) throws APIManagementException {
+@@ -99,7 +129,7 @@ public class FSKeyManagerImpl extends WSO2IS7KeyManager {
+         KeyManagerConnectorConfiguration keyManagerConnectorConfiguration = KeyManagerDataHolder.getInstance()
+                 .getKeyManagerConnectorConfiguration(type);
+         // Obtain additional key manager configurations defined in config
+-        Map<String, Map<String, String>> keyManagerAdditionalProperties = financialServicesConfigurationService
++        Map<String, Map<String, String>> keyManagerAdditionalProperties = getFinancialServicesConfigurationService()
+                 .getKeyManagerConfigs();
+ 
+         if (keyManagerConnectorConfiguration != null) {
+@@ -205,13 +235,115 @@ public class FSKeyManagerImpl extends WSO2IS7KeyManager {
+         if (Boolean.parseBoolean(additionalProperties.get(FinancialServicesConstants.REGULATORY))) {
+             // Adding SP property to identify create request. Will be removed when setting up authenticators.
+             additionalProperties.put(FSKeyManagerConstants.APP_CREATE_REQUEST, FSKeyManagerConstants.TRUE);
++
++            /*
++             * Create regulatory applications as native FAPI applications in IS.
++             *
++             * These values are consumed by the patched WSO2IS7KeyManager
++             * createClientInfo() and become DCR metadata on the initial POST.
++             */
++            additionalProperties.put("token_endpoint_auth_method", "tls_client_auth");
++            additionalProperties.put(
++                    "tls_client_certificate_bound_access_tokens", "true");
++            additionalProperties.put(
++                    "request_object_signing_alg", "PS256");
++            additionalProperties.put(
++                    "id_token_signed_response_alg", "PS256");
++            additionalProperties.put(
++                    "require_signed_request_object", "true");
++            additionalProperties.put(
++                    "require_pushed_authorization_requests", "true");
++            additionalProperties.put("subject_type", "public");
+         }
++
+         doPreCreateApplication(oauthAppRequest, additionalProperties);
++
++
++        /*
++         * WSO2IS7KeyManager#createClientInfo() does not receive the local
++         * FS additionalProperties map above. It consumes
++         * APIConstants.JSON_ADDITIONAL_PROPERTIES from OAuthApplicationInfo.
++         *
++         * Therefore regulatory/FAPI DCR metadata must be copied there before
++         * super.createApplication() builds the initial IS DCR request.
++         */
++        if (Boolean.parseBoolean(additionalProperties.get(FinancialServicesConstants.REGULATORY))) {
++
++            OAuthApplicationInfo requestApplicationInfo = oauthAppRequest.getOAuthApplicationInfo();
++
++            Object existingProperties = requestApplicationInfo.getParameter(
++                    org.wso2.carbon.apimgt.impl.APIConstants.JSON_ADDITIONAL_PROPERTIES);
++
++            JSONObject dcrAdditionalProperties = new JSONObject();
++
++            if (existingProperties instanceof String &&
++                    !((String) existingProperties).trim().isEmpty()) {
++                dcrAdditionalProperties = new JSONObject((String) existingProperties);
++            } else if (existingProperties instanceof Map) {
++                dcrAdditionalProperties = new JSONObject((Map<?, ?>) existingProperties);
++            }
++
++            String certificate = additionalProperties.get(FSKeyManagerConstants.SP_CERTIFICATE);
++            if (certificate == null || certificate.trim().isEmpty()) {
++                throw new APIManagementException(
++                        "sp_certificate is required for a regulatory FAPI application");
++            }
++
++            String tlsClientAuthSubjectDn;
++            try {
++                java.security.cert.CertificateFactory certificateFactory =
++                        java.security.cert.CertificateFactory.getInstance("X.509");
++
++                java.security.cert.X509Certificate x509Certificate =
++                        (java.security.cert.X509Certificate) certificateFactory.generateCertificate(
++                                new java.io.ByteArrayInputStream(
++                                        certificate.getBytes(java.nio.charset.StandardCharsets.US_ASCII)));
++
++                tlsClientAuthSubjectDn = x509Certificate
++                        .getSubjectX500Principal()
++                        .getName(javax.security.auth.x500.X500Principal.RFC2253);
++
++            } catch (java.security.cert.CertificateException e) {
++                throw new APIManagementException(
++                        "Unable to derive tls_client_auth_subject_dn from sp_certificate", e);
++            }
++
++            additionalProperties.put(
++                    "tls_client_auth_subject_dn", tlsClientAuthSubjectDn);
++
++            dcrAdditionalProperties.put(
++                    "token_endpoint_auth_method", "tls_client_auth");
++            dcrAdditionalProperties.put(
++                    "tls_client_auth_subject_dn", tlsClientAuthSubjectDn);
++            dcrAdditionalProperties.put(
++                    "tls_client_certificate_bound_access_tokens", true);
++            dcrAdditionalProperties.put(
++                    "request_object_signing_alg", "PS256");
++            dcrAdditionalProperties.put(
++                    "id_token_signed_response_alg", "PS256");
++            dcrAdditionalProperties.put(
++                    "require_signed_request_object", true);
++            dcrAdditionalProperties.put(
++                    "require_pushed_authorization_requests", true);
++            dcrAdditionalProperties.put(
++                    "subject_type", "public");
++
++            requestApplicationInfo.addParameter(
++                    org.wso2.carbon.apimgt.impl.APIConstants.JSON_ADDITIONAL_PROPERTIES,
++                    dcrAdditionalProperties.toString());
++        }
++
++
+         OAuthApplicationInfo oAuthApplicationInfo = super.createApplication(oauthAppRequest);
++
++
+         // Need to get the application name after creating the application to obtain the generated app name
+         String appName = oAuthApplicationInfo.getClientName();
+-        // Admin needs to have application role to retrieve and edit the app
+-        FSKeyManagerUtil.addApplicationRoleToAdmin(appName);
++        // Do not assign the legacy local Application/* hybrid role here.
++        // With APIM 4.6 + IS 7.x external Key Manager, the OAuth application
++        // is managed in IS and this APIM-local role is not provisioned.
++        // Newer upstream Financial Services Accelerator versions have also
++        // removed this legacy role-assignment step.
+ 
+         try {
+             JSONObject serviceProviderAppData = IdentityServerUtils.getSPApplicationFromClientId(
+@@ -226,8 +358,13 @@ public class FSKeyManagerImpl extends WSO2IS7KeyManager {
+                 }
+                 // Assigning null as it is how the tokenScope parameter is used in the updateApplication method
+                 oauthAppRequest.getOAuthApplicationInfo().addParameter(FSKeyManagerConstants.TOKEN_SCOPE, null);
++
+                 super.updateApplication(oauthAppRequest);
++
++
+             }
++
++
+             updateSpProperties(appName, oAuthApplicationInfo, serviceProviderAppData, additionalProperties, true);
+             return oAuthApplicationInfo;
+ 
+@@ -290,7 +427,10 @@ public class FSKeyManagerImpl extends WSO2IS7KeyManager {
+             throws APIManagementException {
+ 
+         try {
++
+             doPreUpdateSpApp(oAuthApplicationInfo, serviceProviderAppData, additionalProperties, isCreateApp);
++
++
+             // Iterate FS specific additional properties to check whether they override the value of any predefined
+             // sp properties in application management listeners
+             Map<String, Object> spProperties = IdentityServerUtils.constructSPPropertiesList(
+@@ -304,8 +444,12 @@ public class FSKeyManagerImpl extends WSO2IS7KeyManager {
+                     .get(FSKeyManagerConstants.APP_CREATE_REQUEST));
+             boolean isRegulatory = Boolean.parseBoolean(additionalProperties
+                     .get(FinancialServicesConstants.REGULATORY));
++
++
+             if (isAppCreateRequest && isRegulatory) {
+                 String certificate = additionalProperties.get(FSKeyManagerConstants.SP_CERTIFICATE);
++
++
+                 IdentityServerUtils.updateSPApplication(serviceProviderAppData
+                         .getString(FSKeyManagerConstants.CLIENT_ID), certificate);
+             }
+@@ -323,7 +467,7 @@ public class FSKeyManagerImpl extends WSO2IS7KeyManager {
+     protected OAuthApplicationInfo updateAdditionalProperties(OAuthApplicationInfo oAuthApplicationInfo,
+                                                               JSONArray spProperties) {
+ 
+-        Map<String, Map<String, String>> keyManagerAdditionalProperties = financialServicesConfigurationService
++        Map<String, Map<String, String>> keyManagerAdditionalProperties = getFinancialServicesConfigurationService()
+                 .getKeyManagerConfigs();
+         for (String key : keyManagerAdditionalProperties.keySet()) {
+             for (int i = 0; i < spProperties.length(); i++) {
+diff --git a/financial-services-accelerator/components/org.wso2.financial.services.accelerator.keymanager/src/main/java/org/wso2/financial/services/accelerator/keymanager/utils/IdentityServerUtils.java b/financial-services-accelerator/components/org.wso2.financial.services.accelerator.keymanager/src/main/java/org/wso2/financial/services/accelerator/keymanager/utils/IdentityServerUtils.java
+index 28f4d0bd..5f11a287 100644
+--- a/financial-services-accelerator/components/org.wso2.financial.services.accelerator.keymanager/src/main/java/org/wso2/financial/services/accelerator/keymanager/utils/IdentityServerUtils.java
++++ b/financial-services-accelerator/components/org.wso2.financial.services.accelerator.keymanager/src/main/java/org/wso2/financial/services/accelerator/keymanager/utils/IdentityServerUtils.java
+@@ -18,6 +18,7 @@
+ 
+ package org.wso2.financial.services.accelerator.keymanager.utils;
+ 
++
+ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+ import org.apache.commons.io.IOUtils;
+ import org.apache.http.client.methods.CloseableHttpResponse;
+@@ -137,6 +138,7 @@ public class IdentityServerUtils {
+             URIBuilder builder = new URIBuilder(url);
+             HttpPatch httpPatch = new HttpPatch(builder.build());
+ 
++
+             JSONObject appUpdatePayload = constructAppUpdatePayload(certificate);
+             StringEntity params = new StringEntity(appUpdatePayload.toString());
+             httpPatch.setEntity(params);
+@@ -150,6 +152,8 @@ public class IdentityServerUtils {
+             httpPatch.setHeader(FinancialServicesConstants.AUTH_HEADER,
+                     FinancialServicesUtils.getBasicAuthHeader(userName, password));
+             CloseableHttpResponse response = HTTPClientUtils.getHttpsClient().execute(httpPatch);
++
++
+             if (response.getStatusLine().getStatusCode() != 200) {
+                 throw new FinancialServicesException("Error while getting sp application from client id");
+             }
+@@ -188,25 +192,84 @@ public class IdentityServerUtils {
+     public static void updateDCRApplication(String clientId, String appName, Map<String, Object> attributes)
+             throws FinancialServicesException {
+ 
+-        JSONObject spApplication = constructDCRUpdatePayload(appName, attributes);
+-
+         try {
+             String url = getIdentitySeverUrl() + FSKeyManagerConstants.DCR_EP + clientId;
+             URIBuilder builder = new URIBuilder(url);
++
++            String userName = getAPIMgtConfig(FSKeyManagerConstants.API_KEY_VALIDATOR_USERNAME);
++            char[] password = getAPIMgtConfig(FSKeyManagerConstants.API_KEY_VALIDATOR_PASSWORD).toCharArray();
++            String authorizationHeader = FinancialServicesUtils.getBasicAuthHeader(userName, password);
++
++            /*
++             * IS DCR PUT behaves as a replacement-style update for OAuth metadata.
++             * Retrieve the existing client first so FAPI properties configured during
++             * client creation are preserved when the FS-specific SP metadata is updated.
++             */
++            org.apache.http.client.methods.HttpGet httpGet =
++                    new org.apache.http.client.methods.HttpGet(builder.build());
++            httpGet.setHeader(FinancialServicesConstants.AUTH_HEADER, authorizationHeader);
++
++            JSONObject spApplication;
++            try (CloseableHttpResponse getResponse = HTTPClientUtils.getHttpsClient().execute(httpGet)) {
++                int statusCode = getResponse.getStatusLine().getStatusCode();
++                String responseBody = getResponse.getEntity() == null
++                        ? ""
++                        : org.apache.http.util.EntityUtils.toString(getResponse.getEntity());
++
++                if (statusCode != 200) {
++                    throw new FinancialServicesException(
++                            "Error while retrieving sp application. HTTP " +
++                                    statusCode + ": " + responseBody);
++                }
++
++                spApplication = new JSONObject(responseBody);
++            }
++
++            /*
++             * ext_application_owner is server-managed. Replaying it through DCR PUT
++             * causes IS application-management authorization to reject the update.
++             * IS preserves the existing owner when this property is omitted.
++             */
++            spApplication.remove("ext_application_owner");
++
++            spApplication.put(FSKeyManagerConstants.CLIENT_NAME, appName);
++            spApplication.put(FSKeyManagerConstants.ADDITIONAL_ATTRIBUTES, attributes);
++
++            if (attributes.containsKey(FinancialServicesConstants.REGULATORY) &&
++                    Boolean.parseBoolean(attributes.get(
++                            FinancialServicesConstants.REGULATORY).toString())) {
++                spApplication.put(
++                        FSKeyManagerConstants.TLS_CLIENT_CERT_BOUND_ACCESS_TOKENS, true);
++            }
++
+             HttpPut httpPut = new HttpPut(builder.build());
+             StringEntity params = new StringEntity(spApplication.toString());
+             httpPut.setEntity(params);
+             httpPut.setHeader(FinancialServicesConstants.CONTENT_TYPE_TAG,
+                     FinancialServicesConstants.JSON_CONTENT_TYPE);
++            httpPut.setHeader(FinancialServicesConstants.AUTH_HEADER, authorizationHeader);
+ 
+-            String userName = getAPIMgtConfig(FSKeyManagerConstants.API_KEY_VALIDATOR_USERNAME);
+-            char[] password = getAPIMgtConfig(FSKeyManagerConstants.API_KEY_VALIDATOR_PASSWORD).toCharArray();
+-            httpPut.setHeader(FinancialServicesConstants.AUTH_HEADER,
+-                    FinancialServicesUtils.getBasicAuthHeader(userName, password));
+-            CloseableHttpResponse response = HTTPClientUtils.getHttpsClient().execute(httpPut);
+-            if (response.getStatusLine().getStatusCode() != 200) {
+-                throw new FinancialServicesException("Error while updating sp application");
++            /*
++             * Do not log spApplication here. The DCR GET representation contains
++             * client_secret.
++             */
++
++            try (CloseableHttpResponse response =
++                         HTTPClientUtils.getHttpsClient().execute(httpPut)) {
++
++                int statusCode = response.getStatusLine().getStatusCode();
++                String responseBody = response.getEntity() == null
++                        ? ""
++                        : org.apache.http.util.EntityUtils.toString(response.getEntity());
++
++
++                if (statusCode != 200) {
++                    throw new FinancialServicesException(
++                            "Error while updating sp application. HTTP " +
++                                    statusCode + ": " + responseBody);
++                }
+             }
++
+         } catch (IOException | URISyntaxException e) {
+             throw new FinancialServicesException("Error while updating sp application", e);
+         }

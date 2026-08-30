@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 source "$(dirname "$0")/common.sh"
-need docker; need openssl; need curl; need jq; need awk; need sed
+need docker; need openssl; need curl; need jq; need awk; need sed; need git; need unzip
 
 docker compose version >/dev/null 2>&1 || fatal "Docker Compose v2 is required"
 if [[ "${ALLOW_UNSUPPORTED_WSO2_COMBINATION:-false}" != "true" ]]; then
