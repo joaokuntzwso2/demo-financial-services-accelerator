@@ -88,7 +88,11 @@ password = "admin"
 [role_mgt]
 allow_system_prefix_for_role = true
 
+[transport.https.sslHostConfig.properties]
+certificateVerification = "want"
+
 # Used by APIM's IS 7.x connector / tenant sharing over mTLS.
+ciphers = "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_DHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
 [client_certificate_based_authentication]
 enable = true
 log_client_cert_info = true
@@ -134,3 +138,19 @@ enable_role_validation = true
 # Demo-friendly Open Banking DCR setup. For production, point SSA/JWKS to the trusted directory.
 [oauth.dcr]
 ssa_jwks = "http://bank-backend:8080/directory/jwks.json"
+
+enable_fapi_enforcement = true
+[oauth.oidc.fapi]
+enable_security_profile = true
+enable_ciba_profile = false
+allowed_client_authentication_methods = ["private_key_jwt", "tls_client_auth"]
+allowed_signature_algorithms = ["PS256", "ES256"]
+
+[oauth.oidc.id_token]
+signature_algorithm = "PS256"
+
+[oauth.oidc.token_endpoint]
+signing_algorithms = ["PS256", "ES256"]
+
+[oauth.oidc.user_info]
+jwt_signature_algorithm = "PS256"

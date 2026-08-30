@@ -101,15 +101,83 @@ attach_policies(){
   did=$(upload_api_policy "$apiid" /opt/bootstrap/dynamic.yaml dynamicEndpointPolicy.j2)
   api=$(curlj "${AUTH[@]}" "$APIM_BASE/api/am/publisher/v4/apis/$apiid")
   local basic; basic=$(printf '%s:%s' "$WSO2_ADMIN_USER" "$WSO2_ADMIN_PASSWORD" | base64 | tr -d '\n')
-  # Apply the three API-specific policies to every operation. Dynamic Endpoint stays last.
+  # Consent-management resources create/read the consent itself, so they
+  # must not require a pre-existing consent_id. They use mTLS and are routed
+  # to the Financial Services consent service in IS.
+  #
+  # Business-data resources require all three policies:
+  # mTLS -> Consent Enforcement -> Dynamic Endpoint.
   api=$(jq --arg mid "$mid" --arg cid "$cid" --arg did "$did" --arg basic "$basic" --arg is "$IS_BASE" --arg backend "$backend" --arg regex "$regex" '
     .operations |= map(
       .operationPolicies = ((.operationPolicies // {}) |
-        .request = [
-          {policyName:"mtlsEnforcementPolicy",policyVersion:"v1",policyId:$mid,policyType:"api",parameters:{transportCertAsHeaderEnabled:false,transportCertHeaderName:"x-wso2-client-certificate",isClientCertificateEncoded:false}},
-          {policyName:"consentEnforcementPolicy",policyVersion:"v1",policyId:$cid,policyType:"api",parameters:{consentIdClaimName:"consent_id",consentServiceBasicAuthCredentials:$basic,consentServiceBaseUrl:$is}},
-          {policyName:"dynamicEndpointPolicy",policyVersion:"v1",policyId:$did,policyType:"api",parameters:{consentServiceRoutingRegexPattern:$regex,consentServiceBasicAuthCredentials:$basic,consentServiceBaseUrl:$is,bankBackendBaseUrl:$backend}}
-        ] | .response=(.response//[]) | .fault=(.fault//[])
+        .request = (
+          if ((.target // "") | test("^/(account-access-consents|payment-consents|funds-confirmation-consents)(/|$)")) then
+            [
+              {
+                policyName:"mtlsEnforcementPolicy",
+                policyVersion:"v1",
+                policyId:$mid,
+                policyType:"api",
+                parameters:{
+                  transportCertAsHeaderEnabled:false,
+                  transportCertHeaderName:"x-wso2-client-certificate",
+                  isClientCertificateEncoded:false
+                }
+              },
+              {
+                policyName:"dynamicEndpointPolicy",
+                policyVersion:"v1",
+                policyId:$did,
+                policyType:"api",
+                parameters:{
+                  consentServiceRoutingRegexPattern:$regex,
+                  consentServiceBasicAuthCredentials:$basic,
+                  consentServiceBaseUrl:$is,
+                  bankBackendBaseUrl:$backend
+                }
+              }
+            ]
+          else
+            [
+              {
+                policyName:"mtlsEnforcementPolicy",
+                policyVersion:"v1",
+                policyId:$mid,
+                policyType:"api",
+                parameters:{
+                  transportCertAsHeaderEnabled:false,
+                  transportCertHeaderName:"x-wso2-client-certificate",
+                  isClientCertificateEncoded:false
+                }
+              },
+              {
+                policyName:"consentEnforcementPolicy",
+                policyVersion:"v1",
+                policyId:$cid,
+                policyType:"api",
+                parameters:{
+                  consentIdClaimName:"consent_id",
+                  consentServiceBasicAuthCredentials:$basic,
+                  consentServiceBaseUrl:$is
+                }
+              },
+              {
+                policyName:"dynamicEndpointPolicy",
+                policyVersion:"v1",
+                policyId:$did,
+                policyType:"api",
+                parameters:{
+                  consentServiceRoutingRegexPattern:$regex,
+                  consentServiceBasicAuthCredentials:$basic,
+                  consentServiceBaseUrl:$is,
+                  bankBackendBaseUrl:$backend
+                }
+              }
+            ]
+          end
+        )
+        | .response=(.response//[])
+        | .fault=(.fault//[])
       )
     )' <<<"$api")
   curlj -X PUT "${AUTH[@]}" -H 'Content-Type: application/json' -d "$api" "$APIM_BASE/api/am/publisher/v4/apis/$apiid" >/dev/null || fatal "Policy attachment failed for API $apiid"
@@ -134,9 +202,9 @@ deploy_publish(){
   fi
 }
 
-import_api /workspace/apis/accounts.yaml AcmeBankAccountsAPI /open-banking/v3.1/aisp 3.1.0 "$BANK_BACKEND_BASE/api/fs/backend/services/accounts/accountservice" '.*\/account-access-consents.*'
-import_api /workspace/apis/payments.yaml AcmeBankPaymentsAPI /open-banking/v3.1/pisp 3.1.0 "$BANK_BACKEND_BASE/api/fs/backend/services/payments/paymentservice" '.*\/payment-consents.*'
-import_api /workspace/apis/cof.yaml AcmeBankConfirmationOfFundsAPI /open-banking/v3.1/cbpii 3.1.0 "$BANK_BACKEND_BASE/api/fs/backend/services/fundsConfirmation/fundsconfirmationservice" '.*\/funds-confirmation-consents.*'
+import_api /workspace/apis/accounts.yaml AcmeBankAccountsAPI /open-banking/v3.1/aisp 3.1.0 "$BANK_BACKEND_BASE/api/fs/backend/services/accounts/accountservice" '.*account-access-consents.*'
+import_api /workspace/apis/payments.yaml AcmeBankPaymentsAPI /open-banking/v3.1/pisp 3.1.0 "$BANK_BACKEND_BASE/api/fs/backend/services/payments/paymentservice" '.*payment-consents.*'
+import_api /workspace/apis/cof.yaml AcmeBankConfirmationOfFundsAPI /open-banking/v3.1/cbpii 3.1.0 "$BANK_BACKEND_BASE/api/fs/backend/services/fundsConfirmation/fundsconfirmationservice" '.*funds-confirmation-consents.*'
 
 log "Persisting bootstrap metadata"
 jq -n --arg client "$CLIENT_ID" --arg created "$(date -u +%FT%TZ)" '{apimBootstrapClient:$client,completedAt:$created}' > "$STATE/result.json"

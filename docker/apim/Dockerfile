@@ -42,6 +42,12 @@ COPY .state/certs/wso2apim.p12 \
 
 COPY .state/certs/wso2is.p12 /tmp/wso2is.p12
 
+# WSO2 Financial Services Accelerator 4.0.0 APIM-side OSGi bundles.
+# These provide the fsKeyManager connector and FS gateway support.
+COPY dist/fs-apim-accelerator-libs/ \
+  ${WSO2_SERVER_HOME}/repository/components/dropins/
+
+
 COPY --from=policies /normalized/lib/ \
   ${WSO2_SERVER_HOME}/repository/components/lib/
 
@@ -104,6 +110,7 @@ RUN set -eux; \
     chown -R wso2carbon:wso2 \
       "${SECURITY}" \
       "${WSO2_SERVER_HOME}/repository/components/lib" \
+      "${WSO2_SERVER_HOME}/repository/components/dropins" \
       "${WSO2_SERVER_HOME}/repository/deployment/server/synapse-configs/default/sequences" \
       /opt/wso2-ob
 
@@ -117,6 +124,7 @@ COPY --from=prepared \
   /work/base.toml
 
 COPY config/apim/deployment.toml /work/overlay.toml
+
 COPY tools/merge-toml.py /work/merge-toml.py
 
 RUN python /work/merge-toml.py \
@@ -133,6 +141,8 @@ USER root
 
 COPY --from=configmerge /work/deployment.toml \
   ${WSO2_SERVER_HOME}/repository/conf/deployment.toml
+
+COPY config/apim/financial-services.xml /home/wso2carbon/wso2am-4.6.0/repository/conf/financial-services.xml
 
 RUN chown wso2carbon:wso2 \
   ${WSO2_SERVER_HOME}/repository/conf/deployment.toml

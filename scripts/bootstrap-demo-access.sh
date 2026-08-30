@@ -14,7 +14,7 @@ IS_ADMIN_USER="${IS_ADMIN_USER:-admin}"
 IS_ADMIN_PASSWORD="${IS_ADMIN_PASSWORD:-admin}"
 
 APIM_CONTAINER="${APIM_CONTAINER:-wso2-ob-apim}"
-KEY_MANAGER_NAME="${KEY_MANAGER_NAME:-WSO2-IS-7}"
+KEY_MANAGER_NAME="${KEY_MANAGER_NAME:-FS-KEY-MANAGER}"
 APP_NAME="${DEMO_APIM_APPLICATION:-OpenBankingDemoApp}"
 APP_POLICY="${DEMO_APIM_THROTTLING_POLICY:-Unlimited}"
 
@@ -157,7 +157,7 @@ ensure_key_manager_issuer() {
 
   km_id="$(
     jq -er --arg n "$KEY_MANAGER_NAME" \
-      '(.list // [])[] | select(.name==$n or .type==$n or .type=="WSO2-IS-7") | .id' "$list" | head -1
+      '(.list // [])[] | select(.name==$n or .type==$n) | .id' "$list" | head -1
   )" || die "Key Manager $KEY_MANAGER_NAME was not found"
 
   curl -ksS -H "Authorization: Bearer $admin_token" \
@@ -165,7 +165,7 @@ ensure_key_manager_issuer() {
 
   issuer="$(jq -r '.issuer // empty' "$before")"
   if [[ "$issuer" != "$target" ]]; then
-    log "Fixing WSO2-IS-7 issuer identity"
+    log "Fixing Key Manager issuer identity"
     echo "    old: $issuer"
     echo "    new: $target"
     jq --arg issuer "$target" '.issuer=$issuer | del(.id)' "$before" > "$update"
@@ -178,14 +178,14 @@ ensure_key_manager_issuer() {
     )"
     [[ "$http" == "200" ]] || {
       cat "$after" >&2 || true
-      die "Could not update WSO2-IS-7 issuer (HTTP $http)"
+      die "Could not update Key Manager issuer (HTTP $http)"
     }
   fi
 
   curl -ksS -H "Authorization: Bearer $admin_token" \
     "$APIM_PUBLIC/api/am/admin/v4/key-managers/$km_id" > "$after"
 
-  [[ "$(jq -r '.issuer' "$after")" == "$target" ]] || die "WSO2-IS-7 issuer did not persist"
+  [[ "$(jq -r '.issuer' "$after")" == "$target" ]] || die "Key Manager issuer did not persist"
 
   for field in tokenEndpoint introspectionEndpoint clientRegistrationEndpoint revokeEndpoint authorizeEndpoint; do
     value="$(jq -r --arg f "$field" '.[$f] // empty' "$after")"
@@ -194,7 +194,7 @@ ensure_key_manager_issuer() {
     fi
   done
 
-  ok "WSO2-IS-7 public issuer + Docker-internal endpoint split is correct"
+  ok "$KEY_MANAGER_NAME public issuer + Docker-internal endpoint split is correct"
 }
 
 ensure_apim_application() {
@@ -243,34 +243,68 @@ ensure_apim_application() {
 }
 
 discover_demo_apis() {
-  local dp_token="$1" apis="$tmp/apis.json" selected="$STATE_DIR/apis.tsv" count
+  local dp_token="$1"
+  local apis="$tmp/apis.json"
+  local selected="$STATE_DIR/apis.tsv"
+  local count=0
+  local http
+  local i
 
-  curl -ksS -H "Authorization: Bearer $dp_token" \
-    "$APIM_PUBLIC/api/am/devportal/v3/apis?limit=100" > "$apis"
+  log "Waiting for Open Banking APIs to become visible in DevPortal"
 
+  for i in $(seq 1 60); do
+    http="$(
+      curl -ksS \
+        -o "$apis" \
+        -w '%{http_code}' \
+        -H "Authorization: Bearer $dp_token" \
+        "$APIM_PUBLIC/api/am/devportal/v3/apis?limit=100" \
+        2>/dev/null || true
+    )"
+
+    if [[ "$http" == "200" ]]; then
+      jq -r '
+        (.list // [])[]
+        | select(
+            ((.context // "") | test("^/open-banking/"; "i"))
+            and (
+              ((.context // "") | test("/aisp|/pisp|/cbpii|funds"; "i"))
+              or
+              ((.name // "") | test("account|payment|fund|cof"; "i"))
+            )
+          )
+        | [.id, .name, .version, .context]
+        | @tsv
+      ' "$apis" \
+        | awk '!seen[$1]++' \
+        > "$selected"
+
+      count="$(wc -l < "$selected" | tr -d ' ')"
+
+      if [[ "$count" -ge 3 ]]; then
+        ok "Discovered $count Open Banking APIs"
+        return 0
+      fi
+    fi
+
+    if (( i % 5 == 0 )); then
+      echo "    Waiting for published APIs... ($count/3 visible)" >&2
+    fi
+
+    sleep 2
+  done
+
+  echo "Selected APIs:" >&2
+  cat "$selected" >&2 || true
+
+  echo "All visible APIs:" >&2
   jq -r '
     (.list // [])[]
-    | select(
-        ((.context // "") | test("^/open-banking/"; "i"))
-        and (
-          ((.context // "") | test("/aisp|/pisp|/cbpii|funds"; "i"))
-          or ((.name // "") | test("account|payment|fund|cof"; "i"))
-        )
-      )
-    | [.id, .name, .version, .context]
+    | [.id,.name,.version,.context]
     | @tsv
-  ' "$apis" | awk '!seen[$1]++' > "$selected"
+  ' "$apis" >&2 2>/dev/null || true
 
-  count="$(wc -l < "$selected" | tr -d ' ')"
-  if [[ "$count" -lt 3 ]]; then
-    echo "Selected APIs:" >&2
-    cat "$selected" >&2 || true
-    echo "All visible APIs:" >&2
-    jq -r '(.list // [])[] | [.id,.name,.version,.context] | @tsv' "$apis" >&2
-    die "Expected at least 3 Open Banking demo APIs, found $count"
-  fi
-
-  ok "Discovered $count Open Banking APIs"
+  die "Expected at least 3 Open Banking demo APIs, found $count after waiting"
 }
 
 ensure_subscriptions() {
@@ -299,58 +333,117 @@ ensure_subscriptions() {
 
 generate_application_keys() {
   local dp_token="$1" app_id="$2"
-  local out="$STATE_DIR/application-keys.json" response="$tmp/keygen.json"
+  local out="$STATE_DIR/application-keys.json"
+  local response="$tmp/keygen.json"
+  local cert=".state/certs/tpp.crt"
   local http consumer
+
+  [[ -s "$cert" ]] ||
+    die "TPP application certificate not found: $cert"
 
   if [[ -s "$out" ]] &&
      [[ "$(jq -r '.applicationId // empty' "$out")" == "$app_id" ]] &&
-     [[ -n "$(jq -r '.consumerKey // empty' "$out")" ]] &&
-     [[ -n "$(jq -r '.consumerSecret // empty' "$out")" ]]; then
-    ok "Reusing persisted demo Production Keys"
+     [[ "$(jq -r '.keyManager // empty' "$out")" == "$KEY_MANAGER_NAME" ]] &&
+     [[ -n "$(jq -r '.consumerKey // empty' "$out")" ]]; then
+    ok "Reusing persisted $KEY_MANAGER_NAME Production Keys"
     return
   fi
 
-  log "Generating Production Keys with $KEY_MANAGER_NAME"
+  log "Generating regulatory Production Keys with $KEY_MANAGER_NAME"
+
   http="$(
-    curl -ksS -o "$response" -w '%{http_code}' \
+    curl -ksS \
+      -o "$response" \
+      -w '%{http_code}' \
       -H "Authorization: Bearer $dp_token" \
       -H 'Content-Type: application/json' \
-      -X POST "$APIM_PUBLIC/api/am/devportal/v3/applications/$app_id/generate-keys" \
-      -d "$(jq -nc --arg km "$KEY_MANAGER_NAME" '{
-        keyType:"PRODUCTION",
-        keyManager:$km,
-        grantTypesToBeSupported:["password","client_credentials","refresh_token","authorization_code"],
-        callbackUrl:"https://localhost/callback",
-        scopes:["accounts","payments","fundsconfirmations"],
-        validityTime:"3600",
-        additionalProperties:{}
-      }')"
+      -X POST \
+      "$APIM_PUBLIC/api/am/devportal/v3/applications/$app_id/generate-keys" \
+      -d "$(
+        jq -nc \
+          --arg km "$KEY_MANAGER_NAME" \
+          --rawfile cert "$cert" \
+          '{
+            keyType:"PRODUCTION",
+            keyManager:$km,
+            grantTypesToBeSupported:[
+              "client_credentials",
+              "refresh_token",
+              "authorization_code"
+            ],
+            callbackUrl:"https://localhost/callback",
+            scopes:[
+              "accounts",
+              "payments",
+              "fundsconfirmations"
+            ],
+            validityTime:"3600",
+            additionalProperties:{
+              regulatory:"true",
+              sp_certificate:$cert
+            }
+          }'
+      )"
   )"
 
   [[ "$http" == "200" || "$http" == "201" ]] || {
+    echo "Key generation response:" >&2
     cat "$response" >&2 || true
-    die "Production key generation failed (HTTP $http)"
+    die "Regulatory Production key generation failed (HTTP $http)"
   }
 
-  jq -e '.consumerKey and .consumerSecret' "$response" >/dev/null ||
-    die "Key generation response did not contain consumerKey/consumerSecret"
+  jq -e '.consumerKey' "$response" >/dev/null ||
+    die "Key generation response did not contain consumerKey"
 
-  jq --arg app "$app_id" --arg km "$KEY_MANAGER_NAME" \
-    '. + {applicationId:$app,keyManager:$km}' "$response" > "$out"
+  jq \
+    --arg app "$app_id" \
+    --arg km "$KEY_MANAGER_NAME" \
+    '. + {applicationId:$app,keyManager:$km}' \
+    "$response" > "$out"
+
   chmod 600 "$out" 2>/dev/null || true
 
   consumer="$(jq -r '.consumerKey' "$out")"
-  ok "Production Keys generated (${consumer:0:8}...)"
+  ok "Regulatory Production Keys generated (${consumer:0:8}...)"
 }
 
 resolve_is_application() {
   local consumer="$1" response="$tmp/is-apps.json"
-  curl -ksS -u "${IS_ADMIN_USER}:${IS_ADMIN_PASSWORD}" \
+
+  curl -ksS \
+    -u "${IS_ADMIN_USER}:${IS_ADMIN_PASSWORD}" \
     -G "$IS_PUBLIC/api/server/v1/applications" \
     --data-urlencode "filter=clientId eq $consumer" \
-    --data-urlencode 'attributes=clientId,associatedRoles.allowedAudience' > "$response"
+    > "$response"
 
-  jq -er '.applications[0].id' "$response"
+  jq -er '.applications[0].id // empty' "$response"
+}
+
+verify_fapi_application() {
+  local is_app_id="$1"
+  local response="$tmp/is-fapi-app.json"
+
+  curl -ksS \
+    -u "${IS_ADMIN_USER}:${IS_ADMIN_PASSWORD}" \
+    "$IS_PUBLIC/api/server/v1/applications/$is_app_id/inbound-protocols/oidc" \
+    > "$response"
+
+  if ! jq -e '.isFAPIApplication == true' "$response" >/dev/null; then
+    echo "OIDC application configuration:" >&2
+    jq '{
+      clientId,
+      grantTypes,
+      isFAPIApplication,
+      clientAuthentication,
+      accessToken,
+      requestObject,
+      idToken
+    }' "$response" >&2
+
+    die "Regulatory OAuth application is NOT FAPI enabled"
+  fi
+
+  ok "IS OAuth application is FAPI enabled"
 }
 
 ensure_application_role_audience() {
@@ -623,6 +716,49 @@ ensure_role() {
   done
 }
 
+issue_application_token() {
+  local consumer="$1"
+  local scopes="$2"
+  local outfile="$3"
+
+  local response="$tmp/application-token.json"
+  local http
+
+  [[ -s ".state/certs/tpp.crt" ]] ||
+    die "TPP transport certificate is missing"
+
+  [[ -s ".state/certs/tpp.key" ]] ||
+    die "TPP transport private key is missing"
+
+  http="$(
+    curl -ksS \
+      --cert .state/certs/tpp.crt \
+      --key .state/certs/tpp.key \
+      -o "$response" \
+      -w '%{http_code}' \
+      -X POST \
+      "$IS_PUBLIC/oauth2/token" \
+      -H 'Content-Type: application/x-www-form-urlencoded' \
+      --data-urlencode 'grant_type=client_credentials' \
+      --data-urlencode "client_id=$consumer" \
+      --data-urlencode "scope=$scopes"
+  )"
+
+  [[ "$http" == "200" ]] || {
+    echo "FAPI token response:" >&2
+    cat "$response" >&2 || true
+    die "FAPI application token request failed (HTTP $http)"
+  }
+
+  jq -e '.access_token' "$response" >/dev/null ||
+    die "FAPI token response contains no access_token"
+
+  cp "$response" "$outfile"
+  chmod 600 "$outfile" 2>/dev/null || true
+
+  ok "FAPI application token generated"
+}
+
 issue_user_token() {
   local consumer="$1" secret="$2" username="$3" password="$4" scopes="$5" outfile="$6"
   local response="$tmp/token-${username}.json" http
@@ -644,6 +780,92 @@ issue_user_token() {
   jq -e '.access_token' "$response" >/dev/null || die "Token endpoint returned no access_token for $username"
   cp "$response" "$outfile"
   chmod 600 "$outfile" 2>/dev/null || true
+}
+
+verify_application_jwt_claims() {
+  local token_file="$1"
+  local consumer="$2"
+  local expected_scopes="$3"
+
+  TOKEN_FILE="$token_file" \
+  EXPECTED_CONSUMER="$consumer" \
+  EXPECTED_SCOPES="$expected_scopes" \
+  python3 - <<'PYVERIFY'
+import os
+import json
+import base64
+
+data = json.load(open(os.environ["TOKEN_FILE"]))
+token = data["access_token"]
+
+parts = token.split(".")
+if len(parts) != 3:
+    raise SystemExit("FAPI application access token is not a JWT")
+
+payload = parts[1] + "=" * (-len(parts[1]) % 4)
+claims = json.loads(base64.urlsafe_b64decode(payload))
+
+expected_issuer = "https://localhost:9446/oauth2/token"
+
+if claims.get("iss") != expected_issuer:
+    raise SystemExit(
+        f"wrong iss claim: {claims.get('iss')!r}"
+    )
+
+expected_consumer = os.environ["EXPECTED_CONSUMER"]
+
+actual_consumer = (
+    claims.get("client_id")
+    or claims.get("azp")
+)
+
+if actual_consumer != expected_consumer:
+    raise SystemExit(
+        f"wrong client identifier: {actual_consumer!r}"
+    )
+
+raw_scope = claims.get("scope")
+actual_scopes = (
+    set(raw_scope.split())
+    if isinstance(raw_scope, str)
+    else set(raw_scope or [])
+)
+
+expected_scopes = set(
+    os.environ["EXPECTED_SCOPES"].split()
+)
+
+missing = expected_scopes - actual_scopes
+
+if missing:
+    raise SystemExit(
+        f"JWT missing scopes {sorted(missing)}; "
+        f"actual={raw_scope!r}"
+    )
+
+if claims.get("aut") != "APPLICATION":
+    raise SystemExit(
+        f"expected aut=APPLICATION, got {claims.get('aut')!r}"
+    )
+
+cnf = claims.get("cnf") or {}
+
+if not cnf.get("x5t#S256"):
+    raise SystemExit(
+        f"certificate-bound cnf claim missing: {cnf!r}"
+    )
+
+print(json.dumps({
+    "iss": claims.get("iss"),
+    "client_id": claims.get("client_id"),
+    "azp": claims.get("azp"),
+    "scope": claims.get("scope"),
+    "aut": claims.get("aut"),
+    "cnf": claims.get("cnf")
+}, indent=2))
+PYVERIFY
+
+  ok "FAPI JWT is APPLICATION + certificate-bound"
 }
 
 verify_jwt_claims() {
@@ -783,6 +1005,7 @@ CONSUMER_SECRET="$(jq -er '.consumerSecret' "$STATE_DIR/application-keys.json")"
 IS_APP_ID="$(resolve_is_application "$CONSUMER_KEY")"
 ok "Resolved IS OAuth application: $IS_APP_ID"
 
+verify_fapi_application "$IS_APP_ID"
 ensure_application_role_audience "$IS_APP_ID"
 API_RESOURCE_ID="$(ensure_open_banking_api_resource)"
 ensure_api_authorization "$IS_APP_ID" "$API_RESOURCE_ID"
@@ -798,23 +1021,33 @@ ensure_role "OpenBankingAccountsUser" "accounts" "$IS_APP_ID" "$ALICE_ID" "$DEMO
 ensure_role "OpenBankingPaymentsUser" "payments" "$IS_APP_ID" "$BOB_ID" "$DEMO_ID"
 ensure_role "OpenBankingFundsUser" "fundsconfirmations" "$IS_APP_ID" "$CAROL_ID" "$DEMO_ID"
 
-log "Minting and verifying scoped JWTs"
-issue_user_token "$CONSUMER_KEY" "$CONSUMER_SECRET" "$ALICE_USER" "$ALICE_PASSWORD" "accounts" "$STATE_DIR/alice-token.json"
-verify_jwt_claims "$STATE_DIR/alice-token.json" "$CONSUMER_KEY" "accounts" "Alice"
+log "Minting and verifying FAPI application JWT"
 
-issue_user_token "$CONSUMER_KEY" "$CONSUMER_SECRET" "$BOB_USER" "$BOB_PASSWORD" "payments" "$STATE_DIR/bob-token.json"
-verify_jwt_claims "$STATE_DIR/bob-token.json" "$CONSUMER_KEY" "payments" "Bob"
+issue_application_token \
+  "$CONSUMER_KEY" \
+  "accounts" \
+  "$STATE_DIR/application-token.json"
 
-issue_user_token "$CONSUMER_KEY" "$CONSUMER_SECRET" "$CAROL_USER" "$CAROL_PASSWORD" "fundsconfirmations" "$STATE_DIR/carol-token.json"
-verify_jwt_claims "$STATE_DIR/carol-token.json" "$CONSUMER_KEY" "fundsconfirmations" "Carol"
+verify_application_jwt_claims \
+  "$STATE_DIR/application-token.json" \
+  "$CONSUMER_KEY" \
+  "accounts"
 
-issue_user_token "$CONSUMER_KEY" "$CONSUMER_SECRET" "$DEMO_USER" "$DEMO_PASSWORD" "$SCOPES_ALL" "$STATE_DIR/demo-token.json"
-verify_jwt_claims "$STATE_DIR/demo-token.json" "$CONSUMER_KEY" "$SCOPES_ALL" "Demo full-access user"
-
-write_state "$APP_ID" "$IS_APP_ID" "$API_RESOURCE_ID" "$CONSUMER_KEY" "$CONSUMER_SECRET" "$ALICE_ID" "$BOB_ID" "$CAROL_ID" "$DEMO_ID"
+write_state \
+  "$APP_ID" \
+  "$IS_APP_ID" \
+  "$API_RESOURCE_ID" \
+  "$CONSUMER_KEY" \
+  "$CONSUMER_SECRET" \
+  "$ALICE_ID" \
+  "$BOB_ID" \
+  "$CAROL_ID" \
+  "$DEMO_ID"
 
 log "Gateway authentication/scope smoke test"
-gateway_scope_smoke "$STATE_DIR/alice-token.json"
+
+gateway_scope_smoke \
+  "$STATE_DIR/application-token.json"
 
 cat <<EOF
 
@@ -838,11 +1071,8 @@ Runtime credentials:
   $STATE_DIR/demo-access.json
   $STATE_DIR/demo-access.env
 
-Tokens generated and claim-verified:
-  $STATE_DIR/alice-token.json
-  $STATE_DIR/bob-token.json
-  $STATE_DIR/carol-token.json
-  $STATE_DIR/demo-token.json
+FAPI application token generated and claim-verified:
+  $STATE_DIR/application-token.json
 
 All bootstrap identity/application/scope gates passed.
 
