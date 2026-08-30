@@ -43,9 +43,19 @@ COPY .state/certs/wso2apim.p12 \
 COPY .state/certs/wso2is.p12 /tmp/wso2is.p12
 
 # WSO2 Financial Services Accelerator 4.0.0 APIM-side OSGi bundles.
-# These provide the fsKeyManager connector and FS gateway support.
+# The demo installs the compatible FS common + Key Manager bundles only.
 COPY dist/fs-apim-accelerator-libs/ \
   ${WSO2_SERVER_HOME}/repository/components/dropins/
+
+# Replace APIM's installed WSO2 IS7 Key Manager 2.0.8 bundle in place.
+# Keeping only one bundle avoids duplicate OSGi bundles with the same
+# symbolic name/version in plugins and dropins.
+RUN rm -f \
+  ${WSO2_SERVER_HOME}/repository/components/dropins/wso2is7.key.manager*.jar \
+  ${WSO2_SERVER_HOME}/repository/components/plugins/wso2is7.key.manager_2.0.8.jar
+
+COPY dist/custom-apim-libs/wso2is7.key.manager_2.0.8.jar \
+  ${WSO2_SERVER_HOME}/repository/components/plugins/wso2is7.key.manager_2.0.8.jar
 
 
 COPY --from=policies /normalized/lib/ \

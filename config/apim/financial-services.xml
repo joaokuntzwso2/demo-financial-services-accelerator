@@ -42,6 +42,34 @@
         <MaxConnections>2000</MaxConnections>
         <MaxConnectionsPerRoute>1500</MaxConnectionsPerRoute>
     </HTTPConnectionPool>
+    <KeyManager>
+        <KeyManagerAdditionalProperties>
+            <Property
+                    name="regulatory"
+                    label="Regulatory Application"
+                    type="select"
+                    tooltip="Is this a Regulatory Application?"
+                    values="true,false"
+                    default=""
+                    required="true"
+                    mask="false"
+                    multiple="false"
+                    priority="1" />
+
+            <Property
+                    name="sp_certificate"
+                    label="Application Certificate"
+                    type="input"
+                    tooltip="Application Certificate - Mandatory if private_key_jwt Token method is selected"
+                    values=""
+                    default=""
+                    required="false"
+                    mask="false"
+                    multiple="false"
+                    priority="2" />
+        </KeyManagerAdditionalProperties>
+    </KeyManager>
+
     <Identity>
         <ConsentIDClaimName>consent_id</ConsentIDClaimName>
     </Identity>

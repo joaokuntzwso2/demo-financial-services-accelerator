@@ -331,6 +331,90 @@ ensure_subscriptions() {
   done < "$STATE_DIR/apis.tsv"
 }
 
+recover_existing_application_keys() {
+  local dp_token="$1" app_id="$2" out="$3"
+  local list="$tmp/oauth-keys.json"
+  local selected="$tmp/oauth-key-selected.json"
+  local detail="$tmp/oauth-key-detail.json"
+  local http mapping_id consumer secret
+
+  http="$(
+    curl -ksS \
+      -o "$list" \
+      -w '%{http_code}' \
+      -H "Authorization: Bearer $dp_token" \
+      "$APIM_PUBLIC/api/am/devportal/v3/applications/$app_id/oauth-keys" \
+      2>/dev/null || true
+  )"
+
+  if [[ "$http" != "200" ]]; then
+    echo "WARN: OAuth key mapping lookup returned HTTP $http" >&2
+    cat "$list" >&2 2>/dev/null || true
+    return 1
+  fi
+
+  jq \
+    --arg km "$KEY_MANAGER_NAME" '
+      [
+        (.list // [])[]
+        | select(
+            .keyType == "PRODUCTION"
+            and .keyManager == $km
+            and ((.consumerKey // "") != "")
+          )
+      ]
+      | .[0] // empty
+    ' "$list" > "$selected"
+
+  mapping_id="$(jq -r '.keyMappingId // empty' "$selected" 2>/dev/null || true)"
+
+  [[ -n "$mapping_id" ]] || return 1
+
+  #
+  # Fetch the individual mapping as well. Depending on APIM response
+  # representation, the detailed resource can contain more credential
+  # information than the collection entry.
+  #
+  http="$(
+    curl -ksS \
+      -o "$detail" \
+      -w '%{http_code}' \
+      -H "Authorization: Bearer $dp_token" \
+      "$APIM_PUBLIC/api/am/devportal/v3/applications/$app_id/oauth-keys/$mapping_id" \
+      2>/dev/null || true
+  )"
+
+  if [[ "$http" == "200" ]] &&
+     [[ -n "$(jq -r '.consumerKey // empty' "$detail" 2>/dev/null || true)" ]]; then
+    cp "$detail" "$selected"
+  fi
+
+  consumer="$(jq -r '.consumerKey // empty' "$selected")"
+  secret="$(jq -r '.consumerSecret // empty' "$selected")"
+
+  [[ -n "$consumer" ]] || return 1
+
+  if [[ -z "$secret" ]]; then
+    echo "WARN: existing OAuth key mapping $mapping_id has no retrievable consumerSecret" >&2
+    return 1
+  fi
+
+  jq \
+    --arg app "$app_id" \
+    --arg km "$KEY_MANAGER_NAME" \
+    '. + {
+      applicationId:$app,
+      keyManager:$km
+    }' \
+    "$selected" > "$out"
+
+  chmod 600 "$out" 2>/dev/null || true
+
+  ok "Recovered existing $KEY_MANAGER_NAME Production Keys (${consumer:0:8}...)"
+  return 0
+}
+
+
 generate_application_keys() {
   local dp_token="$1" app_id="$2"
   local out="$STATE_DIR/application-keys.json"
@@ -341,14 +425,33 @@ generate_application_keys() {
   [[ -s "$cert" ]] ||
     die "TPP application certificate not found: $cert"
 
+  #
+  # 1. Local persisted state.
+  #
   if [[ -s "$out" ]] &&
      [[ "$(jq -r '.applicationId // empty' "$out")" == "$app_id" ]] &&
      [[ "$(jq -r '.keyManager // empty' "$out")" == "$KEY_MANAGER_NAME" ]] &&
-     [[ -n "$(jq -r '.consumerKey // empty' "$out")" ]]; then
+     [[ -n "$(jq -r '.consumerKey // empty' "$out")" ]] &&
+     [[ -n "$(jq -r '.consumerSecret // empty' "$out")" ]]; then
+
     ok "Reusing persisted $KEY_MANAGER_NAME Production Keys"
     return
   fi
 
+  #
+  # 2. Recover authoritative APIM OAuth key mapping.
+  #
+  # The APIM/IS databases persist independently from .state, therefore
+  # local state may be absent even though the application mapping already
+  # exists.
+  #
+  if recover_existing_application_keys "$dp_token" "$app_id" "$out"; then
+    return
+  fi
+
+  #
+  # 3. Nothing recoverable exists. Generate the regulatory client.
+  #
   log "Generating regulatory Production Keys with $KEY_MANAGER_NAME"
 
   http="$(
@@ -386,25 +489,48 @@ generate_application_keys() {
       )"
   )"
 
-  [[ "$http" == "200" || "$http" == "201" ]] || {
+  if [[ "$http" == "200" || "$http" == "201" ]]; then
+
+    jq -e '.consumerKey' "$response" >/dev/null ||
+      die "Key generation response did not contain consumerKey"
+
+    jq \
+      --arg app "$app_id" \
+      --arg km "$KEY_MANAGER_NAME" \
+      '. + {
+        applicationId:$app,
+        keyManager:$km
+      }' \
+      "$response" > "$out"
+
+    chmod 600 "$out" 2>/dev/null || true
+
+    consumer="$(jq -r '.consumerKey' "$out")"
+    ok "Regulatory Production Keys generated (${consumer:0:8}...)"
+    return
+  fi
+
+  #
+  # APIM may report that the mapping already exists when a previous
+  # workflow succeeded but local state was lost. Recover it instead
+  # of attempting another OAuth application creation.
+  #
+  if [[ "$http" == "409" ]]; then
+    log "APIM reports that the Production key mapping already exists; recovering it"
+
+    if recover_existing_application_keys "$dp_token" "$app_id" "$out"; then
+      return
+    fi
+
     echo "Key generation response:" >&2
     cat "$response" >&2 || true
-    die "Regulatory Production key generation failed (HTTP $http)"
-  }
 
-  jq -e '.consumerKey' "$response" >/dev/null ||
-    die "Key generation response did not contain consumerKey"
+    die "Production key mapping exists but could not be recovered from APIM"
+  fi
 
-  jq \
-    --arg app "$app_id" \
-    --arg km "$KEY_MANAGER_NAME" \
-    '. + {applicationId:$app,keyManager:$km}' \
-    "$response" > "$out"
-
-  chmod 600 "$out" 2>/dev/null || true
-
-  consumer="$(jq -r '.consumerKey' "$out")"
-  ok "Regulatory Production Keys generated (${consumer:0:8}...)"
+  echo "Key generation response:" >&2
+  cat "$response" >&2 || true
+  die "Regulatory Production key generation failed (HTTP $http)"
 }
 
 resolve_is_application() {
