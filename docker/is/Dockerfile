@@ -23,10 +23,12 @@ COPY --from=accelerator \
   /out/wso2-fsiam-accelerator-${FS_ACCELERATOR_VERSION} \
   ${WSO2_SERVER_HOME}/wso2-fsiam-accelerator-${FS_ACCELERATOR_VERSION}
 
-COPY dist/mysql-connector-j-${MYSQL_CONNECTOR_VERSION}.jar \
+COPY --chown=wso2carbon:wso2 --chmod=0644 \
+  dist/mysql-connector-j-${MYSQL_CONNECTOR_VERSION}.jar \
   ${WSO2_SERVER_HOME}/repository/components/lib/mysql-connector-j-${MYSQL_CONNECTOR_VERSION}.jar
 
-COPY dist/wso2is.notification.event.handlers-${NOTIFICATION_HANDLER_VERSION}.jar \
+COPY --chown=wso2carbon:wso2 --chmod=0644 \
+  dist/wso2is.notification.event.handlers-${NOTIFICATION_HANDLER_VERSION}.jar \
   ${WSO2_SERVER_HOME}/repository/components/dropins/wso2is.notification.event.handlers-${NOTIFICATION_HANDLER_VERSION}.jar
 
 COPY .state/certs/wso2is.p12 \
@@ -68,7 +70,8 @@ COPY --from=configmerge /work/deployment.toml \
 # Replace the accelerator 4.0.0 identity extension with the compatibility
 # build used by this demo. This contains the null-SSA DCR update fix required
 # by WSO2 IS 7.2.
-COPY dist/fs-is-accelerator-libs/org.wso2.financial.services.accelerator.identity.extensions-4.0.0.jar \
+COPY --chown=wso2carbon:wso2 --chmod=0644 \
+  dist/fs-is-accelerator-libs/org.wso2.financial.services.accelerator.identity.extensions-4.0.0.jar \
   ${WSO2_SERVER_HOME}/repository/components/dropins/org.wso2.financial.services.accelerator.identity.extensions-4.0.0.jar
 RUN chown wso2carbon:wso2 \
   ${WSO2_SERVER_HOME}/repository/conf/deployment.toml

@@ -11,3 +11,6 @@ download "https://maven.wso2.org/nexus/content/repositories/releases/org/wso2/km
 # Dockerfiles use the documented/default pinned names; prevent accidental version drift.
 [[ "$MYSQL_VER" == "8.0.33" ]] || fatal "This repository currently pins Dockerfile copy path to MySQL Connector/J 8.0.33; update Dockerfiles deliberately before changing MYSQL_CONNECTOR_VERSION."
 [[ "$HANDLER_VER" == "2.1.3" ]] || fatal "This demo baseline pins notification handler 2.1.3; update deliberately before changing NOTIFICATION_HANDLER_VERSION."
+
+# Runtime libraries must not inherit a restrictive host umask into Docker images.
+chmod 0644 "$MYSQL_JAR" "$HANDLER_JAR"
