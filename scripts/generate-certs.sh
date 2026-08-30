@@ -33,12 +33,47 @@ for s in wso2apim wso2is; do
 done
 
 # Use a containerized keytool so the host only needs Docker/OpenSSL rather than a local JDK.
-CERT_DIR="$ROOT/$D"
-keytool_docker(){ docker run --rm -v "$CERT_DIR:/certs" eclipse-temurin:21-jre keytool "$@"; }
-keytool_docker -importcert -noprompt -alias demo-root-ca -file /certs/ca.crt -keystore /certs/client-truststore.p12 -storetype PKCS12 -storepass wso2carbon >/dev/null 2>&1
-keytool_docker -importcert -noprompt -alias wso2apim -file /certs/wso2apim.crt -keystore /certs/client-truststore.p12 -storetype PKCS12 -storepass wso2carbon >/dev/null 2>&1
-keytool_docker -importcert -noprompt -alias wso2is -file /certs/wso2is.crt -keystore /certs/client-truststore.p12 -storetype PKCS12 -storepass wso2carbon >/dev/null 2>&1
-keytool_docker -importcert -noprompt -alias tpp -file /certs/tpp.crt -keystore /certs/client-truststore.p12 -storetype PKCS12 -storepass wso2carbon >/dev/null 2>&1
+#
+# Do not bind-mount the repository into Docker here. Docker Desktop on macOS
+# may reject mktemp paths under /var/folders. Copying the files through the
+# Docker API works from normal clones, temporary clones, and CI workspaces.
+CERT_DIR="$(cd "$ROOT/$D" && pwd -P)"
+
+keytool_docker() {
+    local container
+    local rc=0
+
+    container="wso2-ob-keytool-${PPID}-$$-${RANDOM}"
+
+    if ! docker run -d \
+        --name "$container" \
+        eclipse-temurin:21-jre \
+        sh -c 'mkdir -p /certs && sleep 300' >/dev/null; then
+        echo "ERROR: unable to start temporary keytool container" >&2
+        return 1
+    fi
+
+    if ! docker cp "$CERT_DIR/." "$container:/certs/" >/dev/null; then
+        echo "ERROR: unable to copy certificates into temporary keytool container" >&2
+        rc=1
+    elif ! docker exec "$container" keytool "$@"; then
+        echo "ERROR: keytool command failed" >&2
+        rc=1
+    elif ! docker cp \
+        "$container:/certs/client-truststore.p12" \
+        "$CERT_DIR/client-truststore.p12" >/dev/null; then
+        echo "ERROR: unable to retrieve generated truststore" >&2
+        rc=1
+    fi
+
+    docker rm -f "$container" >/dev/null 2>&1 || true
+    return "$rc"
+}
+
+keytool_docker -importcert -noprompt -alias demo-root-ca -file /certs/ca.crt -keystore /certs/client-truststore.p12 -storetype PKCS12 -storepass wso2carbon
+keytool_docker -importcert -noprompt -alias wso2apim -file /certs/wso2apim.crt -keystore /certs/client-truststore.p12 -storetype PKCS12 -storepass wso2carbon
+keytool_docker -importcert -noprompt -alias wso2is -file /certs/wso2is.crt -keystore /certs/client-truststore.p12 -storetype PKCS12 -storepass wso2carbon
+keytool_docker -importcert -noprompt -alias tpp -file /certs/tpp.crt -keystore /certs/client-truststore.p12 -storetype PKCS12 -storepass wso2carbon
 openssl pkcs12 -export -name tpp -inkey "$D/tpp.key" -in "$D/tpp.crt" -certfile "$D/ca.crt" -out "$D/tpp.p12" -passout pass:changeit >/dev/null 2>&1
 openssl x509 -in "$D/tpp.crt" -noout -fingerprint -sha256 > "$D/tpp.sha256"
 
