@@ -258,9 +258,10 @@ import_api(){
           context:$c,
           version:$v,
           endpointConfig:{
-            endpoint_type:"http",
-            production_endpoints:{url:$u},
-            sandbox_endpoints:{url:$u}
+            endpoint_type:"default",
+            production_endpoints:{url:"default"},
+            sandbox_endpoints:{url:"default"},
+            failOver:"false"
           },
           policies:["Unlimited"],
           gatewayVendor:"wso2",
@@ -372,11 +373,18 @@ attach_policies(){
       --arg is "$IS_BASE" \
       --arg backend "$backend" \
       --arg regex "$regex" '
-      .operations |= map(
-        .operationPolicies = ((.operationPolicies // {}) |
+      .endpointConfig = {
+        endpoint_type:"default",
+        production_endpoints:{url:"default"},
+        sandbox_endpoints:{url:"default"},
+        failOver:"false"
+      }
+      | .operations |= map(
+        . as $operation
+        | .operationPolicies = ((.operationPolicies // {}) |
           .request = (
             if (
-              (.target // "")
+              ($operation.target // "")
               | test("^/(account-access-consents|payment-consents|funds-confirmation-consents)(/|$)")
             ) then
               [

@@ -4,12 +4,8 @@
       "ReadAccountsBasic",
       "ReadAccountsDetail",
       "ReadBalances",
-      "ReadBeneficiariesBasic",
-      "ReadBeneficiariesDetail",
       "ReadTransactionsBasic",
-      "ReadTransactionsDetail",
-      "ReadTransactionsCredits",
-      "ReadTransactionsDebits"
+      "ReadTransactionsDetail"
     ],
     "ExpirationDateTime": "2027-08-27T23:59:59Z",
     "TransactionFromDateTime": "2026-01-01T00:00:00Z",

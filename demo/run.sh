@@ -31,8 +31,11 @@ cat <<EOF
    internal domain service: http://localhost:${BANK_BACKEND_PORT:-8080}/api/fs/backend/services/accounts/accountservice/accounts
    public contract:         https://localhost:${APIM_GATEWAY_HTTPS_PORT:-8243}/open-banking/v3.1/aisp/accounts
 
-6. Use the Publisher UI to inspect operation policies. Every protected operation is provisioned with:
-   MTLS Enforcement -> Consent Enforcement -> Dynamic Endpoint (last).
+6. Use the Publisher UI to inspect operation policies:
+   Consent-management operations:
+     MTLS Enforcement -> Dynamic Endpoint
+   Protected banking-data operations:
+     MTLS Enforcement -> Consent Enforcement -> Dynamic Endpoint (last).
 
 7. For a customer authorization demonstration, use the Financial Services Accelerator's consent
    flow from the Accounts API: create an account-access consent, send the signed request object to
@@ -40,6 +43,6 @@ cat <<EOF
    call /accounts with the TPP mTLS certificate.
 
 The repository intentionally does not fake a browser approval by writing directly to consent tables.
-That would bypass the control you are trying to demonstrate. `demo/requests/` contains payloads to
+That would bypass the control you are trying to demonstrate. demo/requests/ contains payloads to
 use while presenting the flow.
 EOF
