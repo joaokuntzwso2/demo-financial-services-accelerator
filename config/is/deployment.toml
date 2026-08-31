@@ -175,13 +175,33 @@ allowed_username = ["admin"]
 login_url = "https://localhost:9446/authenticationendpoint/login.do"
 retry_url = "https://localhost:9446/authenticationendpoint/retry.do"
 
+[authentication.endpoint.redirect_params]
+filter_policy = "include"
+remove_on_consume_from_api = "true"
+parameters = [
+    "sessionDataKeyConsent",
+    "relyingParty",
+    "authenticators",
+    "authFailureMsg",
+    "authFailure"
+]
+
 [oauth.endpoints.v2]
 oauth2_consent_page = "https://localhost:9446/fs/authenticationendpoint/oauth2_authz.do"
 oidc_consent_page = "https://localhost:9446/fs/authenticationendpoint/oauth2_consent.do"
 
+[financial_services.admin]
+username = "admin"
+password = "admin"
+
 [financial_services.consent]
 is_pre_initiated_consent = true
 auth_flow_consent_id_source = "requestObject"
+
+[financial_services.consent.validation]
+validator = "org.wso2.financial.services.accelerator.consent.mgt.extensions.validate.impl.DefaultConsentValidator"
+signature.alias = "wso2apim"
+jwt.payload.enabled = true
 
 [financial_services.consent.portal.params]
 identity_server_base_url = "https://localhost:9446"
@@ -222,3 +242,25 @@ signing_algorithms = ["PS256", "ES256"]
 
 [oauth.oidc.user_info]
 jwt_signature_algorithm = "PS256"
+# Financial Services Accelerator OAuth authorization/token handlers.
+#
+# FS 4.0.0 requires these handlers so the consent identifier is carried
+# internally from authorization into the authorization-code/token flow.
+[oauth.response_type]
+code.enable = false
+
+[[oauth.custom_response_type]]
+name = "code"
+class = "org.wso2.financial.services.accelerator.identity.extensions.auth.extensions.response.handler.FSCodeResponseTypeHandlerExtension"
+
+[[oauth.custom_response_type]]
+name = "code id_token"
+class = "org.wso2.financial.services.accelerator.identity.extensions.auth.extensions.response.handler.FSHybridResponseTypeHandlerExtension"
+
+[oauth.grant_type.authorization_code]
+enable = true
+grant_handler = "org.wso2.financial.services.accelerator.identity.extensions.grant.type.handlers.FSAuthorizationCodeGrantHandler"
+
+[oauth.grant_type.refresh_token]
+enable = true
+grant_handler = "org.wso2.financial.services.accelerator.identity.extensions.grant.type.handlers.FSRefreshGrantHandler"
