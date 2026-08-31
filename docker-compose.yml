@@ -122,10 +122,6 @@ services:
       WSO2_ADMIN_USER: ${WSO2_ADMIN_USER:-admin}
       WSO2_ADMIN_PASSWORD: ${WSO2_ADMIN_PASSWORD:-admin}
       FS_ACCELERATOR_VERSION: ${FS_ACCELERATOR_VERSION:-4.0.0}
-    volumes:
-      - ./apis:/workspace/apis:ro
-      - ./.state/policies:/workspace/policies:ro
-      - ./.state/bootstrap:/workspace/state
     networks: [obnet]
 
 networks:

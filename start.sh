@@ -26,7 +26,60 @@ docker compose up -d wso2apim
 ./scripts/wait-products.sh
 ./scripts/extract-policies.sh
 log "Bootstrapping IS/APIM integration, APIs, policies, revisions and publication"
-docker compose --profile tools run --rm bootstrap
+mkdir -p .state/bootstrap
+
+BOOTSTRAP_CONTAINER="$(
+  docker compose --profile tools run \
+    -d \
+    --no-deps \
+    --entrypoint sh \
+    bootstrap \
+    -c 'sleep 3600'
+)"
+
+bootstrap_cleanup() {
+  docker rm -f "$BOOTSTRAP_CONTAINER" >/dev/null 2>&1 || true
+}
+
+trap bootstrap_cleanup EXIT
+
+docker exec "$BOOTSTRAP_CONTAINER" \
+  mkdir -p /workspace/apis /workspace/policies /workspace/state
+
+docker cp \
+  "$ROOT/apis/." \
+  "$BOOTSTRAP_CONTAINER:/workspace/apis/"
+
+docker cp \
+  "$ROOT/.state/policies/." \
+  "$BOOTSTRAP_CONTAINER:/workspace/policies/"
+
+if find "$ROOT/.state/bootstrap" -mindepth 1 -print -quit | grep -q .; then
+  docker cp \
+    "$ROOT/.state/bootstrap/." \
+    "$BOOTSTRAP_CONTAINER:/workspace/state/"
+fi
+
+BOOTSTRAP_RC=0
+
+docker exec \
+  "$BOOTSTRAP_CONTAINER" \
+  /opt/bootstrap/bootstrap.sh \
+  || BOOTSTRAP_RC=$?
+
+rm -rf "$ROOT/.state/bootstrap"
+mkdir -p "$ROOT/.state/bootstrap"
+
+docker cp \
+  "$BOOTSTRAP_CONTAINER:/workspace/state/." \
+  "$ROOT/.state/bootstrap/" \
+  >/dev/null 2>&1 || true
+
+bootstrap_cleanup
+trap - EXIT
+
+[[ "$BOOTSTRAP_RC" -eq 0 ]] \
+  || fatal "IS/APIM bootstrap failed"
 
 # Bootstrap demo identities, APIM application, subscriptions, keys and RBAC.
 echo
