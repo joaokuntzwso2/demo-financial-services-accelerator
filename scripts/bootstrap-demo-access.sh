@@ -148,48 +148,218 @@ ensure_demo_ca_in_gateway_truststore() {
 
 ensure_key_manager_issuer() {
   local admin_token="$1"
-  local list="$tmp/km-list.json" before="$tmp/km-before.json" update="$tmp/km-update.json" after="$tmp/km-after.json"
+  local list="$tmp/km-list.json"
+  local before="$tmp/km-before.json"
+  local update="$tmp/km-update.json"
+  local after="$tmp/km-after.json"
+  local create="$tmp/km-create.json"
   local km_id issuer http field value
-  local target="https://localhost:9446/oauth2/token"
 
-  curl -ksS -H "Authorization: Bearer $admin_token" \
-    "$APIM_PUBLIC/api/am/admin/v4/key-managers?limit=100" > "$list"
+  # The issuer is part of the externally visible token identity.
+  # Product-to-product calls must continue using Docker DNS.
+  local target="${IS_PUBLIC%/}/oauth2/token"
+  local internal="${IS_INTERNAL_URL:-https://wso2is:9446}"
+
+  curl -ksS \
+    -H "Authorization: Bearer $admin_token" \
+    "$APIM_PUBLIC/api/am/admin/v4/key-managers?limit=100" \
+    > "$list"
 
   km_id="$(
-    jq -er --arg n "$KEY_MANAGER_NAME" \
-      '(.list // [])[] | select(.name==$n or .type==$n) | .id' "$list" | head -1
-  )" || die "Key Manager $KEY_MANAGER_NAME was not found"
+    jq -r --arg n "$KEY_MANAGER_NAME" \
+      '(.list // [])[] | select(.name==$n) | .id' \
+      "$list" \
+      | head -1
+  )"
 
-  curl -ksS -H "Authorization: Bearer $admin_token" \
-    "$APIM_PUBLIC/api/am/admin/v4/key-managers/$km_id" > "$before"
+  if [[ -z "$km_id" || "$km_id" == "null" ]]; then
+    log "Creating Financial Services Key Manager: $KEY_MANAGER_NAME"
+
+    http="$(
+      curl -ksS \
+        -o "$create" \
+        -w '%{http_code}' \
+        -H "Authorization: Bearer $admin_token" \
+        -H 'Content-Type: application/json' \
+        -X POST \
+        "$APIM_PUBLIC/api/am/admin/v4/key-managers" \
+        -d "$(
+          jq -nc \
+            --arg name "$KEY_MANAGER_NAME" \
+            --arg issuer "$target" \
+            --arg is "$internal" \
+            --arg user "$APIM_ADMIN_USER" \
+            --arg pass "$APIM_ADMIN_PASSWORD" \
+            '{
+              name:$name,
+              displayName:"Financial Services Key Manager",
+              type:"fsKeyManager",
+              description:"Financial Services Accelerator Key Manager backed by WSO2 Identity Server 7.2",
+
+              wellKnownEndpoint:($is + "/oauth2/token/.well-known/openid-configuration"),
+              issuer:$issuer,
+
+              clientRegistrationEndpoint:($is + "/api/identity/oauth2/dcr/v1.1/register"),
+              introspectionEndpoint:($is + "/oauth2/introspect"),
+              tokenEndpoint:($is + "/oauth2/token"),
+              displayTokenEndpoint:($is + "/oauth2/token"),
+              revokeEndpoint:($is + "/oauth2/revoke"),
+              displayRevokeEndpoint:($is + "/oauth2/revoke"),
+              userInfoEndpoint:($is + "/scim2/Me"),
+              authorizeEndpoint:($is + "/oauth2/authorize"),
+              scopeManagementEndpoint:($is + "/api/identity/oauth2/v1.0/scopes"),
+
+              endpoints:[
+                {
+                  name:"client_registration_endpoint",
+                  value:($is + "/api/identity/oauth2/dcr/v1.1/register")
+                },
+                {
+                  name:"introspection_endpoint",
+                  value:($is + "/oauth2/introspect")
+                },
+                {
+                  name:"token_endpoint",
+                  value:($is + "/oauth2/token")
+                },
+                {
+                  name:"revoke_endpoint",
+                  value:($is + "/oauth2/revoke")
+                },
+                {
+                  name:"userinfo_endpoint",
+                  value:($is + "/scim2/Me")
+                },
+                {
+                  name:"authorize_endpoint",
+                  value:($is + "/oauth2/authorize")
+                },
+                {
+                  name:"display_token_endpoint",
+                  value:($is + "/oauth2/token")
+                },
+                {
+                  name:"display_revoke_endpoint",
+                  value:($is + "/oauth2/revoke")
+                }
+              ],
+
+              certificates:{
+                type:"JWKS",
+                value:($is + "/oauth2/jwks")
+              },
+
+              availableGrantTypes:[
+                "client_credentials",
+                "refresh_token",
+                "authorization_code",
+                "urn:ietf:params:oauth:grant-type:jwt-bearer"
+              ],
+
+              enableTokenGeneration:true,
+              enableMapOAuthConsumerApps:true,
+              enableOAuthAppCreation:true,
+              enableSelfValidationJWT:true,
+              enabled:true,
+              tokenType:"DIRECT",
+
+              additionalProperties:{
+                Authentication:"BasicAuth",
+                Username:$user,
+                Password:$pass,
+                api_resource_management_endpoint:($is + "/api/server/v1/api-resources"),
+                is7_roles_endpoint:($is + "/scim2/v2/Roles"),
+                enable_roles_creation:false,
+                user_schema_cache_enabled:true
+              }
+            }'
+        )"
+    )"
+
+    if [[ "$http" != "200" && "$http" != "201" ]]; then
+      cat "$create" >&2 || true
+      die "Could not create $KEY_MANAGER_NAME (HTTP $http)"
+    fi
+
+    km_id="$(jq -r '.id // empty' "$create")"
+
+    # Be robust if APIM did not return the id in the create response.
+    if [[ -z "$km_id" ]]; then
+      curl -ksS \
+        -H "Authorization: Bearer $admin_token" \
+        "$APIM_PUBLIC/api/am/admin/v4/key-managers?limit=100" \
+        > "$list"
+
+      km_id="$(
+        jq -r --arg n "$KEY_MANAGER_NAME" \
+          '(.list // [])[] | select(.name==$n) | .id' \
+          "$list" \
+          | head -1
+      )"
+    fi
+
+    [[ -n "$km_id" ]] ||
+      die "$KEY_MANAGER_NAME was created but could not be resolved"
+
+    ok "Created $KEY_MANAGER_NAME ($km_id)"
+  fi
+
+  curl -ksS \
+    -H "Authorization: Bearer $admin_token" \
+    "$APIM_PUBLIC/api/am/admin/v4/key-managers/$km_id" \
+    > "$before"
+
+  [[ "$(jq -r '.type // empty' "$before")" == "fsKeyManager" ]] ||
+    die "$KEY_MANAGER_NAME exists but is not type fsKeyManager"
 
   issuer="$(jq -r '.issuer // empty' "$before")"
+
   if [[ "$issuer" != "$target" ]]; then
     log "Fixing Key Manager issuer identity"
     echo "    old: $issuer"
     echo "    new: $target"
-    jq --arg issuer "$target" '.issuer=$issuer | del(.id)' "$before" > "$update"
+
+    jq \
+      --arg issuer "$target" \
+      '.issuer=$issuer | del(.id)' \
+      "$before" \
+      > "$update"
+
     http="$(
-      curl -ksS -o "$after" -w '%{http_code}' \
+      curl -ksS \
+        -o "$after" \
+        -w '%{http_code}' \
         -H "Authorization: Bearer $admin_token" \
         -H 'Content-Type: application/json' \
-        -X PUT "$APIM_PUBLIC/api/am/admin/v4/key-managers/$km_id" \
+        -X PUT \
+        "$APIM_PUBLIC/api/am/admin/v4/key-managers/$km_id" \
         --data-binary @"$update"
     )"
+
     [[ "$http" == "200" ]] || {
       cat "$after" >&2 || true
       die "Could not update Key Manager issuer (HTTP $http)"
     }
   fi
 
-  curl -ksS -H "Authorization: Bearer $admin_token" \
-    "$APIM_PUBLIC/api/am/admin/v4/key-managers/$km_id" > "$after"
+  curl -ksS \
+    -H "Authorization: Bearer $admin_token" \
+    "$APIM_PUBLIC/api/am/admin/v4/key-managers/$km_id" \
+    > "$after"
 
-  [[ "$(jq -r '.issuer' "$after")" == "$target" ]] || die "Key Manager issuer did not persist"
+  [[ "$(jq -r '.issuer' "$after")" == "$target" ]] ||
+    die "Key Manager issuer did not persist"
 
-  for field in tokenEndpoint introspectionEndpoint clientRegistrationEndpoint revokeEndpoint authorizeEndpoint; do
+  for field in \
+    tokenEndpoint \
+    introspectionEndpoint \
+    clientRegistrationEndpoint \
+    revokeEndpoint \
+    authorizeEndpoint
+  do
     value="$(jq -r --arg f "$field" '.[$f] // empty' "$after")"
-    if [[ -n "$value" && "$value" != https://wso2is:9446/* ]]; then
+
+    if [[ -n "$value" && "$value" != "$internal"/* ]]; then
       die "$field must remain Docker-internal, got: $value"
     fi
   done
