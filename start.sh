@@ -13,7 +13,7 @@ source scripts/common.sh
 ./scripts/prepare-compatibility-libs.sh
 ./scripts/prepare-apim-policies.sh
 log "Building Go backend, Identity Server 7.2 + IAM Accelerator, API Manager 4.6 + Financial Services mediation policies, and bootstrap helper"
-docker compose build bank-backend wso2is wso2apim bootstrap
+docker compose build mysql bank-backend wso2is wso2apim bootstrap
 log "Starting database and bank backend"
 docker compose up -d mysql bank-backend
 retry "docker compose exec -T mysql mysqladmin ping -h127.0.0.1 -uroot -p${MYSQL_ROOT_PASSWORD:-root} --silent" 60 || fatal "MySQL did not become healthy"

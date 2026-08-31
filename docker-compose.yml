@@ -2,7 +2,10 @@ name: wso2-openbanking-e2e
 
 services:
   mysql:
-    image: mysql:8.0
+    build:
+      context: .
+      dockerfile: docker/mysql/Dockerfile
+    image: wso2-ob-demo-mysql:8.0
     container_name: wso2-ob-mysql
     command:
       - --character-set-server=latin1
@@ -16,7 +19,6 @@ services:
       - "127.0.0.1:${MYSQL_HOST_PORT:-33060}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./config/mysql/00-create-databases.sql:/docker-entrypoint-initdb.d/00-create-databases.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
       interval: 10s
