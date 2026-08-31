@@ -1,20 +1,11 @@
 diff --git a/components/wso2is7.key.manager/src/main/java/org/wso2/is7/client/WSO2IS7KeyManager.java b/components/wso2is7.key.manager/src/main/java/org/wso2/is7/client/WSO2IS7KeyManager.java
-index f85f67e..008c6a6 100644
+index f85f67e..6a3d24f 100644
 --- a/components/wso2is7.key.manager/src/main/java/org/wso2/is7/client/WSO2IS7KeyManager.java
 +++ b/components/wso2is7.key.manager/src/main/java/org/wso2/is7/client/WSO2IS7KeyManager.java
-@@ -252,7 +252,7 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
-             if (grantString.startsWith(",")) {
-                 grantString = grantString.substring(1);
-             }
+@@ -255 +255 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
 -            String[] grantTypes = grantString.split(",");
 +            String[] grantTypes = grantString.trim().split("\\s*,\\s*|\\s+");
-             clientInfo.setGrantTypes(Arrays.asList(grantTypes));
-         }
-         if (StringUtils.isNotEmpty(info.getCallBackURL())) {
-@@ -287,7 +287,126 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
-         Map<String, Object> additionalProperties = new HashMap<>();
-         if (parameter instanceof String) {
-             additionalProperties = new Gson().fromJson((String) parameter, Map.class);
+@@ -289,0 +290,67 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
 +        } else if (parameter instanceof Map) {
 +            Map<?, ?> parameterMap = (Map<?, ?>) parameter;
 +            for (Map.Entry<?, ?> entry : parameterMap.entrySet()) {
@@ -82,7 +73,7 @@ index f85f67e..008c6a6 100644
 +                        "Unable to derive TLS client subject DN " +
 +                        "from regulatory application certificate", e);
 +            }
-         }
+@@ -290,0 +358,52 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
 +        /*
 +         * Propagate Financial Services / FAPI DCR metadata supplied through
 +         * APIConstants.JSON_ADDITIONAL_PROPERTIES.
@@ -135,21 +126,9 @@ index f85f67e..008c6a6 100644
 +            clientInfo.setSubjectType(String.valueOf(fapiProperty));
 +        }
 +
-         if (additionalProperties.containsKey(WSO2IS7KeyManagerConstants.APPLICATION_TOKEN_LIFETIME)) {
-             Object expiryTimeObject =
-                     additionalProperties.get(WSO2IS7KeyManagerConstants.APPLICATION_TOKEN_LIFETIME);
-@@ -401,6 +520,7 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
-         // Set the display name of the application. This name would appear in the consent page of the app.
-         clientInfo.setApplicationDisplayName(info.getClientName());
-         clientInfo.setExtAllowedAudience("organization");
+@@ -403,0 +523 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
 +
-         return clientInfo;
-     }
- 
-@@ -442,7 +562,39 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
-         WSO2IS7ClientInfo request = createClientInfo(oAuthApplicationInfo, oauthClientName, true);
-         WSO2IS7ClientInfo createdClient;
-         try {
+@@ -445 +565,33 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
 -            createdClient = wso2IS7DCRClient.updateApplication(oAuthApplicationInfo.getClientId(), request);
 +            /*
 +             * IS DCR PUT is replacement-like. APIM application updates do not
@@ -184,6 +163,9 @@ index f85f67e..008c6a6 100644
 +
 +            createdClient = wso2IS7DCRClient.updateApplication(
 +                    oAuthApplicationInfo.getClientId(), request);
-             return buildDTOFromClientInfo(createdClient, new OAuthApplicationInfo());
-         } catch (KeyManagerClientException e) {
-             handleException("Error occurred while updating OAuth Client : ", e);
+@@ -516 +668,4 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
+-        String scopes = String.join(" ", tokenRequest.getScope());
++        String[] requestedScopes = tokenRequest.getScope();
++        String scopes = requestedScopes == null
++                ? ""
++                : String.join(" ", requestedScopes);

@@ -14,6 +14,7 @@ IS_ADMIN_USER="${IS_ADMIN_USER:-admin}"
 IS_ADMIN_PASSWORD="${IS_ADMIN_PASSWORD:-admin}"
 
 APIM_CONTAINER="${APIM_CONTAINER:-wso2-ob-apim}"
+IS_CONTAINER="${IS_CONTAINER:-wso2-ob-is}"
 KEY_MANAGER_NAME="${KEY_MANAGER_NAME:-FS-KEY-MANAGER}"
 APP_NAME="${DEMO_APIM_APPLICATION:-OpenBankingDemoApp}"
 APP_POLICY="${DEMO_APIM_THROTTLING_POLICY:-Unlimited}"
@@ -40,7 +41,7 @@ log(){ printf '\n==> %s\n' "$*" >&2; }
 ok(){ printf '[OK] %s\n' "$*" >&2; }
 die(){ printf '[ERROR] %s\n' "$*" >&2; exit 1; }
 
-for c in curl jq python3 docker keytool; do
+for c in curl jq python3 docker keytool openssl shasum; do
   command -v "$c" >/dev/null 2>&1 || die "$c is required"
 done
 
@@ -144,6 +145,68 @@ ensure_demo_ca_in_gateway_truststore() {
   wait_apim_healthy
   wait_https "$APIM_PUBLIC/publisher" "API Manager after truststore reload"
   ok "Demo Root CA trusted by Gateway listener"
+}
+
+
+verify_demo_pki_alignment() {
+  local cert=".state/certs/tpp.crt"
+  local home truststore
+  local local_fp is_fp
+
+  [[ -s "$cert" ]] ||
+    die "Generated TPP certificate not found: $cert"
+
+  docker inspect "$IS_CONTAINER" >/dev/null 2>&1 ||
+    die "$IS_CONTAINER is not running"
+
+  home="$(
+    docker exec "$IS_CONTAINER" sh -lc \
+      'printf "%s" "${WSO2_SERVER_HOME:-}"' \
+      2>/dev/null || true
+  )"
+
+  [[ -n "$home" ]] ||
+    home="/home/wso2carbon/wso2is-7.2.0"
+
+  truststore="$home/repository/resources/security/client-truststore.p12"
+
+  local_fp="$(
+    openssl x509 \
+      -in "$cert" \
+      -outform DER \
+      2>/dev/null \
+      | shasum -a 256 \
+      | awk '{print $1}'
+  )"
+
+  is_fp="$(
+    docker exec "$IS_CONTAINER" \
+      keytool \
+        -exportcert \
+        -alias tpp \
+        -keystore "$truststore" \
+        -storetype PKCS12 \
+        -storepass wso2carbon \
+        2>/dev/null \
+      | shasum -a 256 \
+      | awk '{print $1}'
+  )"
+
+  [[ -n "$local_fp" ]] ||
+    die "Could not calculate local TPP certificate fingerprint"
+
+  [[ -n "$is_fp" ]] ||
+    die "Could not calculate Identity Server TPP certificate fingerprint"
+
+  if [[ "$local_fp" != "$is_fp" ]]; then
+    echo "Local TPP SHA256: $local_fp" >&2
+    echo "IS TPP SHA256:    $is_fp" >&2
+
+    die \
+      "Local demo PKI does not match the running Identity Server; refusing cross-clone bootstrap"
+  fi
+
+  ok "Local demo PKI matches running Identity Server"
 }
 
 ensure_key_manager_issuer() {
@@ -742,6 +805,155 @@ verify_fapi_application() {
   ok "IS OAuth application is FAPI enabled"
 }
 
+
+ensure_is_application_certificate() {
+  local is_app_id="$1"
+  local before="$tmp/is-app-certificate-before.json"
+  local after="$tmp/is-app-certificate-after.json"
+  local patch="$tmp/is-app-certificate-patch.json"
+  local cert=".state/certs/tpp.crt"
+  local expected_fp actual_fp http
+
+  [[ -s "$cert" ]] ||
+    die "Generated TPP certificate not found: $cert"
+
+  expected_fp="$(
+    openssl x509 \
+      -in "$cert" \
+      -outform DER \
+      2>/dev/null \
+      | shasum -a 256 \
+      | awk '{print $1}'
+  )"
+
+  [[ -n "$expected_fp" ]] ||
+    die "Could not calculate expected TPP certificate fingerprint"
+
+  curl -ksS \
+    -u "${IS_ADMIN_USER}:${IS_ADMIN_PASSWORD}" \
+    "$IS_PUBLIC/api/server/v1/applications/$is_app_id" \
+    > "$before"
+
+  actual_fp="$(
+    python3 - "$before" <<'PY_CERT'
+import base64
+import hashlib
+import json
+import re
+import sys
+
+try:
+    with open(sys.argv[1]) as f:
+        app = json.load(f)
+
+    value = (
+        app.get("advancedConfigurations", {})
+           .get("certificate", {})
+           .get("value", "")
+    )
+
+    if not isinstance(value, str) or not value:
+        print("")
+        raise SystemExit(0)
+
+    body = value
+    body = body.replace("-----BEGIN CERTIFICATE-----", "")
+    body = body.replace("-----END CERTIFICATE-----", "")
+    body = re.sub(r"\s+", "", body)
+
+    der = base64.b64decode(body, validate=True)
+    print(hashlib.sha256(der).hexdigest())
+except Exception:
+    # Missing/malformed certificate is treated as a mismatch and repaired
+    # below instead of exposing certificate contents in logs.
+    print("")
+PY_CERT
+  )"
+
+  if [[ "$actual_fp" == "$expected_fp" ]]; then
+    ok "IS OAuth application certificate matches generated TPP certificate"
+    return
+  fi
+
+  log "Normalizing IS OAuth application certificate"
+
+  if [[ -n "$actual_fp" ]]; then
+    echo "    registered SHA256: $actual_fp" >&2
+  else
+    echo "    registered SHA256: unavailable" >&2
+  fi
+
+  echo "    expected SHA256:   $expected_fp" >&2
+
+  jq -n \
+    --rawfile cert "$cert" \
+    '{
+      advancedConfigurations:{
+        certificate:{
+          type:"PEM",
+          value:$cert
+        }
+      }
+    }' \
+    > "$patch"
+
+  http="$(
+    curl -ksS \
+      -o "$after" \
+      -w '%{http_code}' \
+      -u "${IS_ADMIN_USER}:${IS_ADMIN_PASSWORD}" \
+      -X PATCH \
+      -H 'Content-Type: application/json' \
+      "$IS_PUBLIC/api/server/v1/applications/$is_app_id" \
+      --data-binary @"$patch"
+  )"
+
+  [[ "$http" == "200" ]] || {
+    cat "$after" >&2 || true
+    die "Could not normalize IS OAuth application certificate (HTTP $http)"
+  }
+
+  curl -ksS \
+    -u "${IS_ADMIN_USER}:${IS_ADMIN_PASSWORD}" \
+    "$IS_PUBLIC/api/server/v1/applications/$is_app_id" \
+    > "$after"
+
+  actual_fp="$(
+    python3 - "$after" <<'PY_CERT'
+import base64
+import hashlib
+import json
+import re
+import sys
+
+try:
+    with open(sys.argv[1]) as f:
+        app = json.load(f)
+
+    value = (
+        app.get("advancedConfigurations", {})
+           .get("certificate", {})
+           .get("value", "")
+    )
+
+    body = value
+    body = body.replace("-----BEGIN CERTIFICATE-----", "")
+    body = body.replace("-----END CERTIFICATE-----", "")
+    body = re.sub(r"\s+", "", body)
+
+    der = base64.b64decode(body, validate=True)
+    print(hashlib.sha256(der).hexdigest())
+except Exception:
+    print("")
+PY_CERT
+  )"
+
+  [[ "$actual_fp" == "$expected_fp" ]] ||
+    die "IS OAuth application certificate normalization did not persist"
+
+  ok "IS OAuth application certificate matches generated TPP certificate"
+}
+
 ensure_application_role_audience() {
   local is_app_id="$1" before="$tmp/is-app-before.json" out="$tmp/is-app-patch.json"
   local audience http
@@ -1281,6 +1493,7 @@ log "Automatic demo identity + APIM application bootstrap"
 wait_https "$IS_PUBLIC/oauth2/jwks" "Identity Server"
 wait_https "$APIM_PUBLIC/publisher" "API Manager"
 
+verify_demo_pki_alignment
 ensure_demo_ca_in_gateway_truststore
 
 log "Obtaining APIM administration token"
@@ -1302,6 +1515,7 @@ IS_APP_ID="$(resolve_is_application "$CONSUMER_KEY")"
 ok "Resolved IS OAuth application: $IS_APP_ID"
 
 verify_fapi_application "$IS_APP_ID"
+ensure_is_application_certificate "$IS_APP_ID"
 ensure_application_role_audience "$IS_APP_ID"
 API_RESOURCE_ID="$(ensure_open_banking_api_resource)"
 ensure_api_authorization "$IS_APP_ID" "$API_RESOURCE_ID"
