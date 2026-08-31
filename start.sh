@@ -7,6 +7,25 @@ chmod 600 .env 2>/dev/null || true
 chmod 600 .env 2>/dev/null || true
 source scripts/common.sh
 ./scripts/check-prereqs.sh
+
+START_MODE="${1:---fresh}"
+
+case "$START_MODE" in
+  --fresh)
+    ./scripts/clean-demo-environment.sh
+    ;;
+  --reuse)
+    log "Reusing existing demo runtime state"
+    ;;
+  *)
+    echo "Usage: ./start.sh [--fresh|--reuse]" >&2
+    echo >&2
+    echo "  --fresh  Remove previous demo runtime state before startup (default)" >&2
+    echo "  --reuse  Keep the existing database and generated state" >&2
+    exit 2
+    ;;
+esac
+
 ./scripts/generate-certs.sh
 ./scripts/prepare-dependencies.sh
 ./scripts/prepare-accelerators.sh
