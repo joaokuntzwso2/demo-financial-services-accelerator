@@ -8,6 +8,7 @@ summary=$(curl -fsS "http://localhost:${BANK_BACKEND_PORT:-8080}/demo/summary" 2
 check "Mock bank has >=20 accounts" bash -c "test \$(jq -r '.accounts // 0' <<< '$summary') -ge 20"
 check "Mock bank has >=400 transactions" bash -c "test \$(jq -r '.transactions // 0' <<< '$summary') -ge 400"
 check "Identity Server JWKS" curl -ksSf "https://localhost:${IS_HTTPS_PORT:-9446}/oauth2/jwks" -o /dev/null
+check "IS FS BasicAuthentication access control" ./scripts/check-is-fs-access-control.sh
 check "API Manager management surface" bash -c "curl -ksSf https://localhost:${APIM_HTTPS_PORT:-9443}/services/Version >/dev/null || curl -ksSf https://localhost:${APIM_HTTPS_PORT:-9443}/publisher >/dev/null"
 # Consent endpoint varies slightly across Accelerator releases; 401/403/405 proves the webapp/resource exists, while 404 is a hard failure.
 code=$(curl -ksS -o /tmp/ob-consent-check -w '%{http_code}' "https://localhost:${IS_HTTPS_PORT:-9446}/api/fs/consent/manage/consents" || true)
