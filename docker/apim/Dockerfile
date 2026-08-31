@@ -54,7 +54,8 @@ RUN rm -f \
   ${WSO2_SERVER_HOME}/repository/components/dropins/wso2is7.key.manager*.jar \
   ${WSO2_SERVER_HOME}/repository/components/plugins/wso2is7.key.manager_2.0.8.jar
 
-COPY dist/custom-apim-libs/wso2is7.key.manager_2.0.8.jar \
+COPY --chown=wso2carbon:wso2 --chmod=0644 \
+  dist/custom-apim-libs/wso2is7.key.manager_2.0.8.jar \
   ${WSO2_SERVER_HOME}/repository/components/plugins/wso2is7.key.manager_2.0.8.jar
 
 
