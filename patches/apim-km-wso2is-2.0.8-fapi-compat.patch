@@ -1,11 +1,11 @@
 diff --git a/components/wso2is7.key.manager/src/main/java/org/wso2/is7/client/WSO2IS7KeyManager.java b/components/wso2is7.key.manager/src/main/java/org/wso2/is7/client/WSO2IS7KeyManager.java
-index f85f67e..6a3d24f 100644
+index f85f67e..ca723dd 100644
 --- a/components/wso2is7.key.manager/src/main/java/org/wso2/is7/client/WSO2IS7KeyManager.java
 +++ b/components/wso2is7.key.manager/src/main/java/org/wso2/is7/client/WSO2IS7KeyManager.java
 @@ -255 +255 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
 -            String[] grantTypes = grantString.split(",");
 +            String[] grantTypes = grantString.trim().split("\\s*,\\s*|\\s+");
-@@ -289,0 +290,67 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
+@@ -289,0 +290,83 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
 +        } else if (parameter instanceof Map) {
 +            Map<?, ?> parameterMap = (Map<?, ?>) parameter;
 +            for (Map.Entry<?, ?> entry : parameterMap.entrySet()) {
@@ -73,7 +73,7 @@ index f85f67e..6a3d24f 100644
 +                        "Unable to derive TLS client subject DN " +
 +                        "from regulatory application certificate", e);
 +            }
-@@ -290,0 +358,52 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
++        }
 +        /*
 +         * Propagate Financial Services / FAPI DCR metadata supplied through
 +         * APIConstants.JSON_ADDITIONAL_PROPERTIES.
@@ -89,7 +89,7 @@ index f85f67e..6a3d24f 100644
 +        fapiProperty = additionalProperties.get("tls_client_auth_subject_dn");
 +        if (fapiProperty != null && !regulatoryApplication) {
 +            clientInfo.setTlsClientAuthSubjectDn(String.valueOf(fapiProperty));
-+        }
+@@ -290,0 +374,36 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
 +
 +        fapiProperty = additionalProperties.get(
 +                "tls_client_certificate_bound_access_tokens");
@@ -163,9 +163,33 @@ index f85f67e..6a3d24f 100644
 +
 +            createdClient = wso2IS7DCRClient.updateApplication(
 +                    oAuthApplicationInfo.getClientId(), request);
-@@ -516 +668,4 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
+@@ -516 +668,28 @@ public class WSO2IS7KeyManager extends AbstractKeyManager {
 -        String scopes = String.join(" ", tokenRequest.getScope());
 +        String[] requestedScopes = tokenRequest.getScope();
 +        String scopes = requestedScopes == null
 +                ? ""
 +                : String.join(" ", requestedScopes);
++
++        /*
++         * APIM's automatic application-token generation uses client-secret
++         * authentication. FAPI clients registered with tls_client_auth or
++         * private_key_jwt cannot be authenticated that way. The Financial
++         * Services Key Manager expects no automatic token to be minted for
++         * such clients, so avoid making a token request with an unsupported
++         * authentication mechanism.
++         */
++        try {
++            WSO2IS7ClientInfo registeredClient =
++                    wso2IS7DCRClient.getApplication(tokenRequest.getClientId());
++            String tokenEndpointAuthMethod = registeredClient.getTokenEndpointAuthMethod();
++
++            if ("tls_client_auth".equals(tokenEndpointAuthMethod) ||
++                    "private_key_jwt".equals(tokenEndpointAuthMethod)) {
++                return null;
++            }
++        } catch (KeyManagerClientException e) {
++            throw new APIManagementException(
++                    "Error occurred while retrieving OAuth client authentication method - " +
++                            e.getReason(), e);
++        }
++

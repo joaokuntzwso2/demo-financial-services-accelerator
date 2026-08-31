@@ -1500,6 +1500,23 @@ log "Obtaining APIM administration token"
 ADMIN_TOKEN="$(apim_rest_token 'apim:admin' 'admin')"
 ensure_key_manager_issuer "$ADMIN_TOKEN"
 
+# APIM persists dynamically-created Key Managers before the corresponding
+# runtime KeyManagerHolder is guaranteed to contain them. Regulatory key
+# generation can therefore race immediately after first-time KM creation and
+# leave a partial AM_APPLICATION_KEY_MAPPING with no consumer key.
+#
+# Reload APIM after the Financial Services Key Manager has been normalized so
+# the runtime registry is populated from the persisted configuration before
+# any application key workflow is executed.
+log "Reloading API Manager after Financial Services Key Manager registration"
+docker compose restart wso2apim >/dev/null
+
+wait_https "$APIM_PUBLIC/publisher" "API Manager after Key Manager reload"
+
+# Do not keep REST tokens across an explicit server restart.
+log "Refreshing APIM administration token after Key Manager reload"
+ADMIN_TOKEN="$(apim_rest_token 'apim:admin' 'admin')"
+
 log "Obtaining Developer Portal automation token"
 DP_TOKEN="$(apim_rest_token 'apim:subscribe apim:app_manage' 'devportal')"
 
