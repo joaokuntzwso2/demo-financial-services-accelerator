@@ -36,6 +36,7 @@ func (a *API) Handler() http.Handler {
 	m.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { write(w, 200, map[string]any{"status": "ok"}) })
 	m.HandleFunc("/demo/summary", a.summary)
 	m.HandleFunc("/directory/jwks.json", directoryJWKS)
+	m.HandleFunc("/extensions/populate-consent-authorize-screen", a.populateConsentAuthorizeScreen)
 	baseA := "/api/fs/backend/services/accounts/accountservice"
 	m.HandleFunc(baseA+"/accounts", a.accounts)
 	m.HandleFunc(baseA+"/accounts/", a.accountSubresource)
@@ -62,12 +63,30 @@ func (a *API) summary(w http.ResponseWriter, r *http.Request) {
 }
 func (a *API) accounts(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
-		errJSON(w, 405, "method not allowed")
+		errJSON(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
+
+	allowed, err := allowedAccountsFromRequest(r)
+	if err != nil {
+		errJSON(w, http.StatusUnauthorized, "invalid account consent context")
+		return
+	}
+
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	write(w, 200, envelope(map[string]any{"Account": a.s.Accounts}))
+
+	out := make([]Account, 0, len(allowed))
+
+	for _, account := range a.s.Accounts {
+		if _, ok := allowed[account.AccountID]; ok {
+			out = append(out, account)
+		}
+	}
+
+	write(w, http.StatusOK, envelope(map[string]any{
+		"Account": out,
+	}))
 }
 
 func (a *API) accountSubresource(w http.ResponseWriter, r *http.Request) {
@@ -83,6 +102,17 @@ func (a *API) accountSubresource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := parts[0]
+	allowed, err := allowedAccountsFromRequest(r)
+	if err != nil {
+		errJSON(w, http.StatusUnauthorized, "invalid account consent context")
+		return
+	}
+
+	if _, ok := allowed[id]; !ok {
+		errJSON(w, http.StatusForbidden, "account not permitted by consent")
+		return
+	}
+
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	var acc *Account

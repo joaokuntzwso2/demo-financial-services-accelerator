@@ -264,3 +264,29 @@ grant_handler = "org.wso2.financial.services.accelerator.identity.extensions.gra
 [oauth.grant_type.refresh_token]
 enable = true
 grant_handler = "org.wso2.financial.services.accelerator.identity.extensions.grant.type.handlers.FSRefreshGrantHandler"
+
+# Demo bank integration for the Financial Services consent authorization page.
+# The stock FS Accelerator 4.0.0 DefaultConsentRetrievalStep supplies two
+# hard-coded dummy accounts. Keep that step for its consent/state validation,
+# then replace the screen data with real demo-bank accounts through the
+# supported OpenAPI service-extension mechanism.
+[financial_services.extensions.endpoint]
+enabled = true
+allowed_extensions = ["populate_consent_authorize_screen"]
+base_url = "http://bank-backend:8080/extensions"
+retry_count = 3
+connect_timeout = 5
+read_timeout = 5
+
+[financial_services.extensions.endpoint.security]
+type = "Basic-Auth"
+username = "fs-extension"
+password = "fs-extension-secret"
+
+[[financial_services.consent.authorize_steps.retrieve]]
+class = "org.wso2.financial.services.accelerator.consent.mgt.extensions.authorize.impl.DefaultConsentRetrievalStep"
+priority = 1
+
+[[financial_services.consent.authorize_steps.retrieve]]
+class = "org.wso2.financial.services.accelerator.consent.mgt.extensions.authorize.impl.ExternalAPIConsentRetrievalStep"
+priority = 2

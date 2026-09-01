@@ -21,6 +21,7 @@ check "APIM Accounts API bootstrapped" test -s .state/bootstrap/AcmeBankAccounts
 check "APIM Payments API bootstrapped" test -s .state/bootstrap/AcmeBankPaymentsAPI.id
 check "APIM CoF API bootstrapped" test -s .state/bootstrap/AcmeBankConfirmationOfFundsAPI.id
 check "TPP client certificate exists" test -s .state/certs/tpp.crt
+check "IS public certificate exists for backend ARI verification" test -s .state/certs/wso2is.crt
 check "Shared truststore exists" test -s .state/certs/client-truststore.p12
 (( fail == 0 )) || fatal "One or more runtime gates failed. Run ./logs.sh before treating the demo as ready."
 log "All implemented runtime gates passed"

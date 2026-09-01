@@ -34,6 +34,11 @@ services:
     environment:
       LISTEN_ADDR: ":8080"
       SEED: "20260827"
+      FS_EXTENSION_USER: "fs-extension"
+      FS_EXTENSION_PASSWORD: "fs-extension-secret"
+      FS_ARI_CERT_FILE: "/run/secrets/wso2is.crt"
+    volumes:
+      - ./.state/certs/wso2is.crt:/run/secrets/wso2is.crt:ro
     ports:
       - "127.0.0.1:${BANK_BACKEND_PORT:-8080}:8080"
     healthcheck:

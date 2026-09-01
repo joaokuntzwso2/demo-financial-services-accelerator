@@ -3,8 +3,26 @@ umask 077
 source "$(dirname "$0")/common.sh"
 need openssl; need xxd; need docker
 D=.state/certs
+
+# The backend verifies Account-Request-Information with the IS public
+# certificate. If only the PEM certificate is missing, recover it from the
+# existing IS PKCS#12 instead of rotating the entire disposable demo PKI.
+if [[ ! -s "$D/wso2is.crt" && -s "$D/wso2is.p12" ]]; then
+  TMP_CERT="$(mktemp)"
+  openssl pkcs12 \
+    -in "$D/wso2is.p12" \
+    -clcerts \
+    -nokeys \
+    -passin pass:wso2carbon \
+    -out "$TMP_CERT" >/dev/null 2>&1
+  openssl x509 \
+    -in "$TMP_CERT" \
+    -out "$D/wso2is.crt"
+  rm -f "$TMP_CERT"
+fi
+
 mkdir -p "$D"
-if [[ -s "$D/client-truststore.p12" && -s "$D/wso2apim.p12" && -s "$D/wso2is.p12" && -s "$D/tpp.crt" && -s "$D/directory-jwks.json" && -s "$D/tpp-jwks.json" ]]; then
+if [[ -s "$D/client-truststore.p12" && -s "$D/wso2apim.p12" && -s "$D/wso2is.p12" && -s "$D/wso2is.crt" && -s "$D/tpp.crt" && -s "$D/directory-jwks.json" && -s "$D/tpp-jwks.json" ]]; then
   log "Demo certificates and JWKS already exist"
   exit 0
 fi
