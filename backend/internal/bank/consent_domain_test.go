@@ -756,9 +756,9 @@ func TestFundsConfirmationConsentEnforcement(
 			defer response.Body.Close()
 
 			if response.StatusCode !=
-				http.StatusOK {
+				http.StatusCreated {
 				t.Fatalf(
-					"expected 200, got %d",
+					"expected 201, got %d",
 					response.StatusCode,
 				)
 			}

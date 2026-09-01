@@ -1,33 +1,192 @@
 openapi: 3.0.3
-info: {title: Acme Bank Payments API, version: 3.1.0, description: Open Banking-style payment initiation demo API.}
-servers: [{url: https://localhost:8243/open-banking/v3.1/pisp}]
+
+info:
+  title: Acme Bank Payments API
+  version: 3.1.0
+  description: Open Banking-style payment initiation demo API.
+
+servers:
+  - url: https://localhost:8243/open-banking/v3.1/pisp
+
 paths:
   /payment-consents:
     post:
       summary: Create payment consent
-      security: [{OAuth2: [payments]}]
-      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
-      responses: {'201': {description: Consent created}}
+      security:
+        - OAuth2: [payments]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentConsent'
+      responses:
+        '201':
+          description: Consent created
+
   /payment-consents/{ConsentId}:
     get:
-      security: [{OAuth2: [payments]}]
-      parameters: [{name: ConsentId, in: path, required: true, schema: {type: string}}]
-      responses: {'200': {description: Consent}}
+      security:
+        - OAuth2: [payments]
+      parameters:
+        - name: ConsentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Consent
+
   /domestic-payments:
     post:
       summary: Initiate domestic payment after authorization
-      security: [{OAuth2: [payments]}]
+      security:
+        - OAuth2: [payments]
       parameters:
-        - {name: x-idempotency-key, in: header, required: true, schema: {type: string}}
-        - {name: x-fapi-interaction-id, in: header, required: false, schema: {type: string}}
-      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Payment'}}}}
-      responses: {'201': {description: Payment accepted}}
+        - name: x-idempotency-key
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: x-fapi-interaction-id
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentSubmission'
+      responses:
+        '201':
+          description: Payment accepted
+
   /domestic-payments/{PaymentId}:
     get:
-      security: [{OAuth2: [payments]}]
-      parameters: [{name: PaymentId, in: path, required: true, schema: {type: string}}]
-      responses: {'200': {description: Payment status}}
+      security:
+        - OAuth2: [payments]
+      parameters:
+        - name: PaymentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Payment status
+
 components:
+  schemas:
+    PaymentConsent:
+      type: object
+      required:
+        - Data
+        - Risk
+      properties:
+        Data:
+          type: object
+          required:
+            - Initiation
+          properties:
+            Initiation:
+              $ref: '#/components/schemas/PaymentInitiation'
+        Risk:
+          $ref: '#/components/schemas/Risk'
+
+    PaymentSubmission:
+      type: object
+      required:
+        - Data
+        - Risk
+      properties:
+        Data:
+          type: object
+          required:
+            - ConsentId
+            - Initiation
+          properties:
+            ConsentId:
+              type: string
+              maxLength: 128
+            Initiation:
+              $ref: '#/components/schemas/PaymentInitiation'
+        Risk:
+          $ref: '#/components/schemas/Risk'
+
+    PaymentInitiation:
+      type: object
+      required:
+        - InstructionIdentification
+        - EndToEndIdentification
+        - InstructedAmount
+        - DebtorAccount
+        - CreditorAccount
+      properties:
+        InstructionIdentification:
+          type: string
+          maxLength: 35
+        EndToEndIdentification:
+          type: string
+          maxLength: 35
+        LocalInstrument:
+          type: string
+        InstructedAmount:
+          $ref: '#/components/schemas/Amount'
+        DebtorAccount:
+          $ref: '#/components/schemas/AccountReference'
+        CreditorAccount:
+          $ref: '#/components/schemas/AccountReference'
+        RemittanceInformation:
+          $ref: '#/components/schemas/RemittanceInformation'
+
+    AccountReference:
+      type: object
+      required:
+        - SchemeName
+        - Identification
+      properties:
+        SchemeName:
+          type: string
+        Identification:
+          type: string
+          maxLength: 256
+        Name:
+          type: string
+          maxLength: 350
+        SecondaryIdentification:
+          type: string
+          maxLength: 34
+
+    Amount:
+      type: object
+      required:
+        - Amount
+        - Currency
+      properties:
+        Amount:
+          type: string
+          pattern: '^\d{1,13}(\.\d{1,5})?$'
+        Currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+
+    RemittanceInformation:
+      type: object
+      properties:
+        Reference:
+          type: string
+          maxLength: 35
+        Unstructured:
+          type: string
+
+    Risk:
+      type: object
+      additionalProperties: true
+
   securitySchemes:
     OAuth2:
       type: oauth2
@@ -35,22 +194,5 @@ components:
         authorizationCode:
           authorizationUrl: https://localhost:9446/oauth2/authorize
           tokenUrl: https://localhost:9446/oauth2/token
-          scopes: {payments: Initiate payments subject to consent}
-  schemas:
-    Payment:
-      type: object
-      required: [ConsentId, InstructionIdentification, EndToEndIdentification, DebtorAccount, CreditorName, CreditorAccount, InstructedAmount]
-      properties:
-        ConsentId: {type: string}
-    InstructionIdentification: {type: string}
-    EndToEndIdentification: {type: string}
-        DebtorAccount: {type: string}
-        CreditorName: {type: string}
-        CreditorAccount: {type: string}
-        Reference: {type: string}
-        InstructedAmount:
-          type: object
-          required: [Amount, Currency]
-          properties:
-            Amount: {type: string, pattern: '^[0-9]+\\.[0-9]{2}$'}
-            Currency: {type: string, minLength: 3, maxLength: 3}
+          scopes:
+            payments: Initiate payments subject to consent

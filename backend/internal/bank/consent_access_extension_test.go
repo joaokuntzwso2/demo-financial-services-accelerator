@@ -107,6 +107,7 @@ func TestValidateConsentAccessPaymentSubmissionAndRetrieval(
 		"Data": map[string]any{
 			"Initiation": initiation,
 		},
+		"Risk": map[string]any{},
 	}
 
 	submission := map[string]any{
@@ -276,6 +277,69 @@ func TestValidateConsentAccessFundsConfirmation(
 	if response["status"] != "SUCCESS" {
 		t.Fatalf(
 			"expected funds confirmation SUCCESS: %#v",
+			response,
+		)
+	}
+}
+
+func TestPaymentConsentAccessRejectsRiskTamper(
+	t *testing.T,
+) {
+	api := NewAPI(Seed(1))
+
+	initiation := map[string]any{
+		"InstructionIdentification": "INST-RISK-001",
+
+		"EndToEndIdentification": "E2E-RISK-001",
+
+		"InstructedAmount": map[string]any{
+			"Amount":   "10.00",
+			"Currency": "USD",
+		},
+	}
+
+	receipt := map[string]any{
+		"Data": map[string]any{
+			"Initiation": initiation,
+		},
+
+		"Risk": map[string]any{},
+	}
+
+	body := map[string]any{
+		"Data": map[string]any{
+			"ConsentId": "consent-1",
+
+			"Initiation": initiation,
+		},
+
+		"Risk": map[string]any{
+			"PaymentContextCode": "EcommerceGoods",
+		},
+	}
+
+	response :=
+		callConsentAccessExtension(
+			t,
+			api,
+			consentAccessTestRequest(
+				"payments",
+				"/domestic-payments",
+				receipt,
+				body,
+			),
+		)
+
+	if response["status"] != "ERROR" {
+		t.Fatalf(
+			"expected Risk tamper rejection: %#v",
+			response,
+		)
+	}
+
+	if response["errorCode"] != float64(400) {
+		t.Fatalf(
+			"expected 400 semantics: %#v",
 			response,
 		)
 	}

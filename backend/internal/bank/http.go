@@ -904,12 +904,18 @@ func (a *API) funds(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		fundsConfirmationID := fmt.Sprintf(
+			"FCONF-%d",
+			time.Now().UTC().UnixNano(),
+		)
+
 		write(
 			w,
-			http.StatusOK,
+			http.StatusCreated,
 			envelope(
 				map[string]any{
-					"ConsentId": ctx.ConsentID,
+					"FundsConfirmationId": fundsConfirmationID,
+					"ConsentId":           ctx.ConsentID,
 
 					"CreationDateTime": now(),
 

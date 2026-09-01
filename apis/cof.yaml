@@ -41,6 +41,13 @@ paths:
     post:
       security:
         - OAuth2: [fundsconfirmations]
+      parameters:
+        - name: x-fapi-interaction-id
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
       requestBody:
         required: true
         content:
@@ -48,8 +55,12 @@ paths:
             schema:
               $ref: '#/components/schemas/FundsConfirmation'
       responses:
-        '200':
-          description: Funds availability
+        '201':
+          description: Funds confirmation created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FundsConfirmationResponse'
 
 components:
   schemas:
@@ -67,19 +78,63 @@ components:
           properties:
             ConsentId:
               type: string
+              maxLength: 128
             Reference:
               type: string
               maxLength: 35
             InstructedAmount:
-              type: object
-              required:
-                - Amount
-                - Currency
-              properties:
-                Amount:
-                  type: string
-                Currency:
-                  type: string
+              $ref: '#/components/schemas/Amount'
+
+    FundsConfirmationResponse:
+      type: object
+      required:
+        - Data
+      properties:
+        Data:
+          type: object
+          required:
+            - FundsConfirmationId
+            - ConsentId
+            - CreationDateTime
+            - FundsAvailable
+            - Reference
+            - InstructedAmount
+          properties:
+            FundsConfirmationId:
+              type: string
+              maxLength: 40
+            ConsentId:
+              type: string
+              maxLength: 128
+            CreationDateTime:
+              type: string
+              format: date-time
+            FundsAvailable:
+              type: boolean
+            Reference:
+              type: string
+              maxLength: 35
+            InstructedAmount:
+              $ref: '#/components/schemas/Amount'
+        Links:
+          type: object
+          additionalProperties: true
+        Meta:
+          type: object
+          additionalProperties: true
+
+    Amount:
+      type: object
+      required:
+        - Amount
+        - Currency
+      properties:
+        Amount:
+          type: string
+          pattern: '^\d{1,13}(\.\d{1,5})?$'
+        Currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
 
   securitySchemes:
     OAuth2:

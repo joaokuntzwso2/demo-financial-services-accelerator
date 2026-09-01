@@ -298,6 +298,41 @@ func validatePaymentConsentAccess(
 			"Initiation payloads does not match"
 	}
 
+	// OBWriteDomestic2 requires the Risk object submitted with
+	// the payment to match the Risk object authorised in the
+	// corresponding payment consent.
+	receipt :=
+		req.Data.ConsentResource.Receipt
+
+	if receipt == nil {
+		return http.StatusBadRequest,
+			"Authorised consent receipt not found"
+	}
+
+	authorisedRisk, authorisedRiskOK :=
+		receipt["Risk"].(map[string]any)
+
+	if !authorisedRiskOK {
+		return http.StatusBadRequest,
+			"Authorised Risk object not found"
+	}
+
+	submittedRisk, submittedRiskOK :=
+		body["Risk"].(map[string]any)
+
+	if !submittedRiskOK {
+		return http.StatusBadRequest,
+			"Invalid Submission payload Risk Object found"
+	}
+
+	if !reflect.DeepEqual(
+		authorisedRisk,
+		submittedRisk,
+	) {
+		return http.StatusBadRequest,
+			"Risk payloads does not match"
+	}
+
 	return 0, ""
 }
 
