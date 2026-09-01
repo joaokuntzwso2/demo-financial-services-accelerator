@@ -806,6 +806,92 @@ verify_fapi_application() {
 }
 
 
+ensure_fapi_hybrid_flow() {
+  local is_app_id="$1"
+  local before="$tmp/is-hybrid-before.json"
+  local update="$tmp/is-hybrid-update.json"
+  local after="$tmp/is-hybrid-after.json"
+  local http
+
+  curl -ksS \
+    -u "${IS_ADMIN_USER}:${IS_ADMIN_PASSWORD}" \
+    "$IS_PUBLIC/api/server/v1/applications/$is_app_id/inbound-protocols/oidc" \
+    > "$before"
+
+  if jq -e '
+      .hybridFlow.enable == true
+      and .hybridFlow.responseType == "code id_token"
+    ' "$before" >/dev/null; then
+    ok "IS OAuth hybrid code id_token flow is enabled"
+    return
+  fi
+
+  log "Enabling IS OAuth hybrid code id_token flow"
+
+  # Preserve the authoritative OIDC configuration returned by IS and change
+  # only the hybrid-flow setting. "state" is response-only and must not be
+  # included in the PUT representation.
+  jq '
+    del(.state)
+    | .hybridFlow = {
+        enable: true,
+        responseType: "code id_token"
+      }
+  ' "$before" > "$update"
+
+  http="$(
+    curl -ksS \
+      -o "$after" \
+      -w '%{http_code}' \
+      -u "${IS_ADMIN_USER}:${IS_ADMIN_PASSWORD}" \
+      -X PUT \
+      -H 'Content-Type: application/json' \
+      "$IS_PUBLIC/api/server/v1/applications/$is_app_id/inbound-protocols/oidc" \
+      --data-binary @"$update"
+  )"
+
+  [[ "$http" == "200" ]] || {
+    cat "$after" >&2 || true
+    die "Could not enable IS OAuth hybrid flow (HTTP $http)"
+  }
+
+  curl -ksS \
+    -u "${IS_ADMIN_USER}:${IS_ADMIN_PASSWORD}" \
+    "$IS_PUBLIC/api/server/v1/applications/$is_app_id/inbound-protocols/oidc" \
+    > "$after"
+
+  if ! jq -e '
+      .hybridFlow.enable == true
+      and .hybridFlow.responseType == "code id_token"
+      and .isFAPIApplication == true
+      and .clientAuthentication.tokenEndpointAuthMethod == "tls_client_auth"
+      and .accessToken.bindingType == "certificate"
+      and .accessToken.validateTokenBinding == true
+      and .requestObject.requestObjectSigningAlg == "PS256"
+      and .pushAuthorizationRequest.requirePushAuthorizationRequest == true
+      and .idToken.idTokenSignedResponseAlg == "PS256"
+      and (.grantTypes | index("authorization_code") != null)
+    ' "$after" >/dev/null; then
+
+    echo "OIDC configuration after hybrid-flow normalization:" >&2
+    jq '{
+      clientId,
+      grantTypes,
+      hybridFlow,
+      isFAPIApplication,
+      clientAuthentication,
+      accessToken,
+      requestObject,
+      pushAuthorizationRequest,
+      idToken
+    }' "$after" >&2
+
+    die "Hybrid-flow normalization damaged or failed to preserve required FAPI configuration"
+  fi
+
+  ok "IS OAuth hybrid code id_token flow enabled with FAPI settings preserved"
+}
+
 ensure_is_application_certificate() {
   local is_app_id="$1"
   local before="$tmp/is-app-certificate-before.json"
@@ -1532,6 +1618,7 @@ IS_APP_ID="$(resolve_is_application "$CONSUMER_KEY")"
 ok "Resolved IS OAuth application: $IS_APP_ID"
 
 verify_fapi_application "$IS_APP_ID"
+ensure_fapi_hybrid_flow "$IS_APP_ID"
 ensure_is_application_certificate "$IS_APP_ID"
 ensure_application_role_audience "$IS_APP_ID"
 API_RESOURCE_ID="$(ensure_open_banking_api_resource)"

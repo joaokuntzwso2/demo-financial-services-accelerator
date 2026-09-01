@@ -2,12 +2,50 @@
 source "$(dirname "$0")/common.sh"
 fail=0
 check(){ local label=$1; shift; if "$@"; then printf '  [OK] %s\n' "$label"; else printf '  [FAIL] %s\n' "$label"; fail=1; fi; }
+verify_fapi_hybrid_flow() {
+  local keys=".state/demo-access/application-keys.json"
+  local client_id app_id
+  local apps oidc
+
+  [[ -s "$keys" ]] || return 1
+
+  client_id="$(jq -r '.consumerKey // empty' "$keys")"
+  [[ -n "$client_id" ]] || return 1
+
+  apps="$(
+    curl -ksS \
+      -u "${IS_ADMIN_USER:-admin}:${IS_ADMIN_PASSWORD:-admin}" \
+      -G "https://localhost:${IS_HTTPS_PORT:-9446}/api/server/v1/applications" \
+      --data-urlencode "filter=clientId eq $client_id"
+  )" || return 1
+
+  app_id="$(jq -r '.applications[0].id // empty' <<<"$apps")"
+  [[ -n "$app_id" ]] || return 1
+
+  oidc="$(
+    curl -ksS \
+      -u "${IS_ADMIN_USER:-admin}:${IS_ADMIN_PASSWORD:-admin}" \
+      "https://localhost:${IS_HTTPS_PORT:-9446}/api/server/v1/applications/$app_id/inbound-protocols/oidc"
+  )" || return 1
+
+  jq -e '
+    .isFAPIApplication == true
+    and .hybridFlow.enable == true
+    and .hybridFlow.responseType == "code id_token"
+    and .clientAuthentication.tokenEndpointAuthMethod == "tls_client_auth"
+    and .accessToken.bindingType == "certificate"
+    and .requestObject.requestObjectSigningAlg == "PS256"
+    and .pushAuthorizationRequest.requirePushAuthorizationRequest == true
+  ' <<<"$oidc" >/dev/null
+}
+
 log "Runtime verification"
 check "Mock bank health" curl -fsS "http://localhost:${BANK_BACKEND_PORT:-8080}/healthz" -o /dev/null
 summary=$(curl -fsS "http://localhost:${BANK_BACKEND_PORT:-8080}/demo/summary" 2>/dev/null || echo '{}')
 check "Mock bank has >=20 accounts" bash -c "test \$(jq -r '.accounts // 0' <<< '$summary') -ge 20"
 check "Mock bank has >=400 transactions" bash -c "test \$(jq -r '.transactions // 0' <<< '$summary') -ge 400"
 check "Identity Server JWKS" curl -ksSf "https://localhost:${IS_HTTPS_PORT:-9446}/oauth2/jwks" -o /dev/null
+check "IS FAPI hybrid code id_token flow enabled" verify_fapi_hybrid_flow
 check "IS FS BasicAuthentication access control" ./scripts/check-is-fs-access-control.sh
 check "API Manager management surface" bash -c "curl -ksSf https://localhost:${APIM_HTTPS_PORT:-9443}/services/Version >/dev/null || curl -ksSf https://localhost:${APIM_HTTPS_PORT:-9443}/publisher >/dev/null"
 check "API Manager live TLS certificate matches generated demo PKI" bash -c './scripts/check-apim-tls-certificate.sh >/dev/null'
