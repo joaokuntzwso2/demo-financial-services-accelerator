@@ -199,7 +199,7 @@ is_pre_initiated_consent = true
 auth_flow_consent_id_source = "requestObject"
 
 [financial_services.consent.validation]
-validator = "org.wso2.financial.services.accelerator.consent.mgt.extensions.validate.impl.DefaultConsentValidator"
+validator = "org.wso2.financial.services.accelerator.consent.mgt.extensions.validate.impl.ConsentValidatorServiceExtension"
 signature.alias = "wso2apim"
 jwt.payload.enabled = true
 
@@ -272,7 +272,7 @@ grant_handler = "org.wso2.financial.services.accelerator.identity.extensions.gra
 # supported OpenAPI service-extension mechanism.
 [financial_services.extensions.endpoint]
 enabled = true
-allowed_extensions = ["populate_consent_authorize_screen"]
+allowed_extensions = ["populate_consent_authorize_screen", "validate_consent_access"]
 base_url = "http://bank-backend:8080/extensions"
 retry_count = 3
 connect_timeout = 5

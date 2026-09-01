@@ -1,1 +1,10 @@
-{"AccountId":"ACC-001","InstructedAmount":{"Amount":"500.00","Currency":"BRL"}}
+{
+  "Data": {
+    "ConsentId": "REPLACE_WITH_COF_CONSENT_ID",
+    "Reference": "COF-CAROL-001",
+    "InstructedAmount": {
+      "Amount": "10.00",
+      "Currency": "USD"
+    }
+  }
+}

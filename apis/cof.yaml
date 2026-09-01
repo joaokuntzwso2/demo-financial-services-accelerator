@@ -1,35 +1,86 @@
 openapi: 3.0.3
-info: {title: Acme Bank Confirmation of Funds API, version: 3.1.0, description: Open Banking-style confirmation of funds demo API.}
-servers: [{url: https://localhost:8243/open-banking/v3.1/cbpii}]
+
+info:
+  title: Acme Bank Confirmation of Funds API
+  version: 3.1.0
+  description: Open Banking-style confirmation of funds demo API.
+
+servers:
+  - url: https://localhost:8243/open-banking/v3.1/cbpii
+
 paths:
   /funds-confirmation-consents:
     post:
-      security: [{OAuth2: [fundsconfirmations]}]
-      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
-      responses: {'201': {description: Consent created}}
-  /funds-confirmation-consents/{ConsentId}:
-    get:
-      security: [{OAuth2: [fundsconfirmations]}]
-      parameters: [{name: ConsentId, in: path, required: true, schema: {type: string}}]
-      responses: {'200': {description: Consent}}
-  /funds-confirmations:
-    post:
-      security: [{OAuth2: [fundsconfirmations]}]
+      security:
+        - OAuth2: [fundsconfirmations]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [AccountId, InstructedAmount]
-              properties:
-                AccountId: {type: string}
-                InstructedAmount:
-                  type: object
-                  required: [Amount, Currency]
-                  properties: {Amount: {type: string}, Currency: {type: string}}
-      responses: {'200': {description: Funds availability}}
+      responses:
+        '201':
+          description: Consent created
+
+  /funds-confirmation-consents/{ConsentId}:
+    get:
+      security:
+        - OAuth2: [fundsconfirmations]
+      parameters:
+        - name: ConsentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Consent
+
+  /funds-confirmations:
+    post:
+      security:
+        - OAuth2: [fundsconfirmations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FundsConfirmation'
+      responses:
+        '200':
+          description: Funds availability
+
 components:
+  schemas:
+    FundsConfirmation:
+      type: object
+      required:
+        - Data
+      properties:
+        Data:
+          type: object
+          required:
+            - ConsentId
+            - Reference
+            - InstructedAmount
+          properties:
+            ConsentId:
+              type: string
+            Reference:
+              type: string
+              maxLength: 35
+            InstructedAmount:
+              type: object
+              required:
+                - Amount
+                - Currency
+              properties:
+                Amount:
+                  type: string
+                Currency:
+                  type: string
+
   securitySchemes:
     OAuth2:
       type: oauth2
@@ -37,4 +88,5 @@ components:
         authorizationCode:
           authorizationUrl: https://localhost:9446/oauth2/authorize
           tokenUrl: https://localhost:9446/oauth2/token
-          scopes: {fundsconfirmations: Confirm funds subject to consent}
+          scopes:
+            fundsconfirmations: Confirm funds subject to consent

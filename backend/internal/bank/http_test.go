@@ -145,30 +145,31 @@ func TestAccountsAndFunds(t *testing.T) {
 		}
 	})
 
-	// Funds Confirmation is intentionally unaffected by the Accounts
-	// resource-membership enforcement.
-	body := `{"AccountId":"ACC-001","InstructedAmount":{"Amount":"1.00","Currency":"BRL"}}`
+	t.Run("funds confirmation missing ARI fails closed", func(t *testing.T) {
+		body := `{"AccountId":"ACC-001","InstructedAmount":{"Amount":"1.00","Currency":"BRL"}}`
 
-	r, err := http.Post(
-		srv.URL+
-			"/api/fs/backend/services/fundsConfirmation/fundsconfirmationservice/funds-confirmations",
-		"application/json",
-		strings.NewReader(body),
-	)
-	if err != nil {
-		t.Fatalf("funds request: %v", err)
-	}
-	defer r.Body.Close()
+		response, err := http.Post(
+			srv.URL+
+				"/api/fs/backend/services/fundsConfirmation/fundsconfirmationservice/funds-confirmations",
+			"application/json",
+			strings.NewReader(body),
+		)
+		if err != nil {
+			t.Fatalf(
+				"funds request: %v",
+				err,
+			)
+		}
+		defer response.Body.Close()
 
-	if r.StatusCode != http.StatusOK {
-		t.Fatalf("funds: expected 200, got %d", r.StatusCode)
-	}
-
-	var v map[string]any
-
-	if err := json.NewDecoder(r.Body).Decode(&v); err != nil {
-		t.Fatalf("bad funds JSON: %v", err)
-	}
+		if response.StatusCode !=
+			http.StatusUnauthorized {
+			t.Fatalf(
+				"expected 401, got %d",
+				response.StatusCode,
+			)
+		}
+	})
 }
 
 func getWithARI(t *testing.T, url, ari string) *http.Response {
@@ -265,6 +266,20 @@ func signAccountRequestInformation(
 		"currentStatus": "Authorised",
 		"consent_type":  "accounts",
 		"consentId":     "test-consent",
+		"receipt": map[string]any{
+			"Data": map[string]any{
+				"Permissions": []string{
+					"ReadAccountsBasic",
+					"ReadAccountsDetail",
+					"ReadBalances",
+					"ReadTransactionsBasic",
+					"ReadTransactionsDetail",
+				},
+				"ExpirationDateTime":      "2099-01-01T00:00:00Z",
+				"TransactionFromDateTime": "2020-01-01T00:00:00Z",
+				"TransactionToDateTime":   "2098-01-01T00:00:00Z",
+			},
+		},
 		"authorizationResources": []map[string]any{
 			{
 				"authorizationId":     authorizationID,

@@ -1,6 +1,5 @@
 {
   "Data": {
-    "ConsentId": "REPLACE_WITH_PAYMENT_CONSENT_ID",
     "Initiation": {
       "InstructionIdentification": "INST-BOB-001",
       "EndToEndIdentification": "E2E-BOB-001",

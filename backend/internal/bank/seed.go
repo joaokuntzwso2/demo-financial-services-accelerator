@@ -25,7 +25,19 @@ func Seed(seed int64) *Store {
 			if k.s == "CreditCard" {
 				bal = -float64(500 + r.Intn(12000))
 			}
-			a := Account{AccountID: id, CustomerID: fmt.Sprintf("CUS-%03d", customer), Currency: cur, AccountType: k.t, AccountSubType: k.s, Nickname: fmt.Sprintf("%s %02d", k.s, accountNo), Status: "Enabled", OpeningDate: fmt.Sprintf("20%02d-%02d-%02d", 10+r.Intn(15), 1+r.Intn(12), 1+r.Intn(27)), Balance: bal}
+			a := Account{
+				AccountID:      id,
+				CustomerID:     fmt.Sprintf("CUS-%03d", customer),
+				SchemeName:     "OB.SortCodeAccountNumber",
+				Identification: fmt.Sprintf("112800%08d", accountNo),
+				Currency:       cur,
+				AccountType:    k.t,
+				AccountSubType: k.s,
+				Nickname:       fmt.Sprintf("%s %02d", k.s, accountNo),
+				Status:         "Enabled",
+				OpeningDate:    fmt.Sprintf("20%02d-%02d-%02d", 10+r.Intn(15), 1+r.Intn(12), 1+r.Intn(27)),
+				Balance:        bal,
+			}
 			s.Accounts = append(s.Accounts, a)
 			txCount := 22 + r.Intn(10)
 			for t := 0; t < txCount; t++ {

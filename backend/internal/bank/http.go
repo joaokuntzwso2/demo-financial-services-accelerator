@@ -37,6 +37,7 @@ func (a *API) Handler() http.Handler {
 	m.HandleFunc("/demo/summary", a.summary)
 	m.HandleFunc("/directory/jwks.json", directoryJWKS)
 	m.HandleFunc("/extensions/populate-consent-authorize-screen", a.populateConsentAuthorizeScreen)
+	m.HandleFunc("/extensions/validate-consent-access", a.validateConsentAccess)
 	baseA := "/api/fs/backend/services/accounts/accountservice"
 	m.HandleFunc(baseA+"/accounts", a.accounts)
 	m.HandleFunc(baseA+"/accounts/", a.accountSubresource)
@@ -62,213 +63,873 @@ func (a *API) summary(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, map[string]any{"customers": 8, "accounts": len(a.s.Accounts), "transactions": len(a.s.Transactions), "beneficiaries": len(a.s.Beneficiaries), "payments": len(a.s.Payments), "scenario": "Acme Bank / FinLink TPP"})
 }
 func (a *API) accounts(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "GET" {
-		errJSON(w, http.StatusMethodNotAllowed, "method not allowed")
+	if r.Method != http.MethodGet {
+		errJSON(
+			w,
+			http.StatusMethodNotAllowed,
+			"method not allowed",
+		)
 		return
 	}
 
-	allowed, err := allowedAccountsFromRequest(r)
+	ctx, allowed, err := accountConsentFromRequest(r)
 	if err != nil {
-		errJSON(w, http.StatusUnauthorized, "invalid account consent context")
+		errJSON(
+			w,
+			http.StatusUnauthorized,
+			"invalid account consent context",
+		)
+		return
+	}
+
+	if !hasAnyConsentPermission(
+		ctx,
+		"ReadAccountsBasic",
+		"ReadAccountsDetail",
+	) {
+		errJSON(
+			w,
+			http.StatusForbidden,
+			"account read permission not granted by consent",
+		)
 		return
 	}
 
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
-	out := make([]Account, 0, len(allowed))
+	out := make(
+		[]Account,
+		0,
+		len(allowed),
+	)
 
 	for _, account := range a.s.Accounts {
 		if _, ok := allowed[account.AccountID]; ok {
-			out = append(out, account)
+			out = append(
+				out,
+				account,
+			)
 		}
 	}
 
-	write(w, http.StatusOK, envelope(map[string]any{
-		"Account": out,
-	}))
+	write(
+		w,
+		http.StatusOK,
+		envelope(
+			map[string]any{
+				"Account": out,
+			},
+		),
+	)
 }
 
 func (a *API) accountSubresource(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "GET" {
-		errJSON(w, 405, "method not allowed")
-		return
-	}
-	prefix := "/api/fs/backend/services/accounts/accountservice/accounts/"
-	rest := strings.TrimPrefix(r.URL.Path, prefix)
-	parts := strings.Split(strings.Trim(rest, "/"), "/")
-	if len(parts) < 1 || parts[0] == "" {
-		errJSON(w, 404, "account not found")
-		return
-	}
-	id := parts[0]
-	allowed, err := allowedAccountsFromRequest(r)
-	if err != nil {
-		errJSON(w, http.StatusUnauthorized, "invalid account consent context")
+	if r.Method != http.MethodGet {
+		errJSON(
+			w,
+			http.StatusMethodNotAllowed,
+			"method not allowed",
+		)
 		return
 	}
 
-	if _, ok := allowed[id]; !ok {
-		errJSON(w, http.StatusForbidden, "account not permitted by consent")
+	prefix :=
+		"/api/fs/backend/services/accounts/accountservice/accounts/"
+
+	rest := strings.TrimPrefix(
+		r.URL.Path,
+		prefix,
+	)
+
+	parts := strings.Split(
+		strings.Trim(rest, "/"),
+		"/",
+	)
+
+	if len(parts) < 1 ||
+		parts[0] == "" {
+		errJSON(
+			w,
+			http.StatusNotFound,
+			"account not found",
+		)
+		return
+	}
+
+	accountID := parts[0]
+
+	ctx, allowed, err :=
+		accountConsentFromRequest(r)
+
+	if err != nil {
+		errJSON(
+			w,
+			http.StatusUnauthorized,
+			"invalid account consent context",
+		)
+		return
+	}
+
+	if _, ok := allowed[accountID]; !ok {
+		errJSON(
+			w,
+			http.StatusForbidden,
+			"account not permitted by consent",
+		)
 		return
 	}
 
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	var acc *Account
+
+	var account *Account
+
 	for i := range a.s.Accounts {
-		if a.s.Accounts[i].AccountID == id {
-			x := a.s.Accounts[i]
-			acc = &x
-			break
+		if a.s.Accounts[i].AccountID !=
+			accountID {
+			continue
 		}
+
+		value := a.s.Accounts[i]
+		account = &value
+		break
 	}
-	if acc == nil {
-		errJSON(w, 404, "account not found")
+
+	if account == nil {
+		errJSON(
+			w,
+			http.StatusNotFound,
+			"account not found",
+		)
 		return
 	}
+
 	if len(parts) == 1 {
-		write(w, 200, envelope(map[string]any{"Account": []Account{*acc}}))
+		if !hasAnyConsentPermission(
+			ctx,
+			"ReadAccountsBasic",
+			"ReadAccountsDetail",
+		) {
+			errJSON(
+				w,
+				http.StatusForbidden,
+				"account read permission not granted by consent",
+			)
+			return
+		}
+
+		write(
+			w,
+			http.StatusOK,
+			envelope(
+				map[string]any{
+					"Account": []Account{
+						*account,
+					},
+				},
+			),
+		)
 		return
 	}
+
 	switch parts[1] {
 	case "balances":
-		ind := "Credit"
-		amt := acc.Balance
-		if amt < 0 {
-			ind = "Debit"
-			amt = -amt
+		if !hasAnyConsentPermission(
+			ctx,
+			"ReadBalances",
+		) {
+			errJSON(
+				w,
+				http.StatusForbidden,
+				"ReadBalances permission not granted by consent",
+			)
+			return
 		}
-		data := map[string]any{"Balance": []any{map[string]any{"AccountId": id, "CreditDebitIndicator": ind, "Type": "InterimAvailable", "DateTime": now(), "Amount": Amount{Amount: fmt.Sprintf("%.2f", amt), Currency: acc.Currency}}}}
-		write(w, 200, envelope(data))
+
+		indicator := "Credit"
+		amount := account.Balance
+
+		if amount < 0 {
+			indicator = "Debit"
+			amount = -amount
+		}
+
+		data := map[string]any{
+			"Balance": []any{
+				map[string]any{
+					"AccountId":            accountID,
+					"CreditDebitIndicator": indicator,
+					"Type":                 "InterimAvailable",
+					"DateTime":             now(),
+					"Amount": Amount{
+						Amount: fmt.Sprintf(
+							"%.2f",
+							amount,
+						),
+						Currency: account.Currency,
+					},
+				},
+			},
+		}
+
+		write(
+			w,
+			http.StatusOK,
+			envelope(data),
+		)
+
 	case "transactions":
-		out := make([]Transaction, 0)
-		for _, t := range a.s.Transactions {
-			if t.AccountID == id {
-				out = append(out, t)
-			}
+		if !hasAnyConsentPermission(
+			ctx,
+			"ReadTransactionsBasic",
+			"ReadTransactionsDetail",
+		) {
+			errJSON(
+				w,
+				http.StatusForbidden,
+				"transaction read permission not granted by consent",
+			)
+			return
 		}
-		write(w, 200, envelope(map[string]any{"Transaction": out}))
+
+		out := make(
+			[]Transaction,
+			0,
+		)
+
+		allowCredits :=
+			hasAnyConsentPermission(
+				ctx,
+				"ReadTransactionsCredits",
+			)
+
+		allowDebits :=
+			hasAnyConsentPermission(
+				ctx,
+				"ReadTransactionsDebits",
+			)
+
+		directionalFilter :=
+			allowCredits || allowDebits
+
+		for _, tx := range a.s.Transactions {
+			if tx.AccountID != accountID {
+				continue
+			}
+
+			if !transactionWithinConsentWindow(
+				ctx,
+				tx,
+			) {
+				continue
+			}
+
+			if directionalFilter {
+				if strings.EqualFold(
+					tx.CreditDebitIndicator,
+					"Credit",
+				) && !allowCredits {
+					continue
+				}
+
+				if strings.EqualFold(
+					tx.CreditDebitIndicator,
+					"Debit",
+				) && !allowDebits {
+					continue
+				}
+			}
+
+			out = append(out, tx)
+		}
+
+		write(
+			w,
+			http.StatusOK,
+			envelope(
+				map[string]any{
+					"Transaction": out,
+				},
+			),
+		)
+
 	case "beneficiaries":
-		out := make([]Beneficiary, 0)
-		for _, b := range a.s.Beneficiaries {
-			if b.AccountID == id {
-				out = append(out, b)
+		// The current demo permission catalogue intentionally contains only
+		// the validated Accounts/Balance/Transaction permission set.
+		//
+		// We therefore enforce account membership here without inventing a
+		// beneficiary permission the FS profile is not currently configured
+		// to issue.
+		out := make(
+			[]Beneficiary,
+			0,
+		)
+
+		for _, beneficiary := range a.s.Beneficiaries {
+			if beneficiary.AccountID ==
+				accountID {
+				out = append(
+					out,
+					beneficiary,
+				)
 			}
 		}
-		write(w, 200, envelope(map[string]any{"Beneficiary": out}))
+
+		write(
+			w,
+			http.StatusOK,
+			envelope(
+				map[string]any{
+					"Beneficiary": out,
+				},
+			),
+		)
+
 	default:
-		errJSON(w, 404, "resource not found")
+		errJSON(
+			w,
+			http.StatusNotFound,
+			"resource not found",
+		)
 	}
 }
+
 func (a *API) allBeneficiaries(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		errJSON(
+			w,
+			http.StatusMethodNotAllowed,
+			"method not allowed",
+		)
+		return
+	}
+
+	_, allowed, err :=
+		accountConsentFromRequest(r)
+
+	if err != nil {
+		errJSON(
+			w,
+			http.StatusUnauthorized,
+			"invalid account consent context",
+		)
+		return
+	}
+
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	write(w, 200, envelope(map[string]any{"Beneficiary": a.s.Beneficiaries}))
+
+	out := make(
+		[]Beneficiary,
+		0,
+	)
+
+	for _, beneficiary := range a.s.Beneficiaries {
+		if _, ok := allowed[beneficiary.AccountID]; ok {
+			out = append(
+				out,
+				beneficiary,
+			)
+		}
+	}
+
+	write(
+		w,
+		http.StatusOK,
+		envelope(
+			map[string]any{
+				"Beneficiary": out,
+			},
+		),
+	)
 }
 
 func (a *API) payments(w http.ResponseWriter, r *http.Request) {
+	ctx, err :=
+		consentContextFromRequest(
+			r,
+			"payments",
+		)
+
+	if err != nil {
+		errJSON(
+			w,
+			http.StatusUnauthorized,
+			"invalid payment consent context",
+		)
+		return
+	}
+
 	switch r.Method {
-	case "GET":
+	case http.MethodGet:
 		a.mu.RLock()
 		defer a.mu.RUnlock()
-		write(w, 200, envelope(map[string]any{"DomesticPayment": a.s.Payments}))
-	case "POST":
-		var pr PaymentRequest
-		if json.NewDecoder(r.Body).Decode(&pr) != nil {
-			errJSON(w, 400, "invalid JSON")
+
+		out := make(
+			[]Payment,
+			0,
+		)
+
+		for _, payment := range a.s.Payments {
+			if payment.ConsentID ==
+				ctx.ConsentID {
+				out = append(
+					out,
+					payment,
+				)
+			}
+		}
+
+		write(
+			w,
+			http.StatusOK,
+			envelope(
+				map[string]any{
+					"DomesticPayment": out,
+				},
+			),
+		)
+
+	case http.MethodPost:
+		var request PaymentRequest
+
+		if err := json.NewDecoder(
+			r.Body,
+		).Decode(&request); err != nil {
+			errJSON(
+				w,
+				http.StatusBadRequest,
+				"invalid JSON",
+			)
 			return
 		}
-		if pr.DebtorAccount == "" || pr.InstructedAmount.Amount == "" {
-			errJSON(w, 400, "DebtorAccount and InstructedAmount are required")
+
+		if request.ConsentID == "" ||
+			request.InstructionIdentification == "" ||
+			request.EndToEndIdentification == "" ||
+			request.DebtorAccount == "" ||
+			request.CreditorAccount == "" ||
+			request.InstructedAmount.Amount == "" ||
+			request.InstructedAmount.Currency == "" {
+			errJSON(
+				w,
+				http.StatusBadRequest,
+				"ConsentId, payment identifiers, debtor, creditor and amount are required",
+			)
 			return
 		}
-		key := r.Header.Get("x-idempotency-key")
+
+		if err :=
+			authorizePaymentRequest(
+				ctx,
+				request,
+			); err != nil {
+			errJSON(
+				w,
+				consentHTTPStatus(err),
+				"payment request not permitted by consent",
+			)
+			return
+		}
+
+		amount, err := strconv.ParseFloat(
+			request.InstructedAmount.Amount,
+			64,
+		)
+
+		if err != nil ||
+			amount <= 0 {
+			errJSON(
+				w,
+				http.StatusBadRequest,
+				"invalid amount",
+			)
+			return
+		}
+
+		idempotencyKey := strings.TrimSpace(
+			r.Header.Get(
+				"x-idempotency-key",
+			),
+		)
+
+		if idempotencyKey == "" {
+			errJSON(
+				w,
+				http.StatusBadRequest,
+				"x-idempotency-key is required",
+			)
+			return
+		}
+
+		// Do not allow an idempotency key from one PSU consent to retrieve or
+		// collide with the payment created under another consent.
+		scopedKey :=
+			ctx.ConsentID +
+				"\x00" +
+				idempotencyKey
+
 		a.mu.Lock()
 		defer a.mu.Unlock()
-		if key != "" {
-			if id, ok := a.s.idempotency[key]; ok {
-				for _, p := range a.s.Payments {
-					if p.PaymentID == id {
-						write(w, 200, envelope(map[string]any{"DomesticPayment": p}))
-						return
-					}
+
+		if paymentID, ok :=
+			a.s.idempotency[scopedKey]; ok {
+			for _, payment := range a.s.Payments {
+				if payment.PaymentID ==
+					paymentID &&
+					payment.ConsentID ==
+						ctx.ConsentID {
+					write(
+						w,
+						http.StatusOK,
+						envelope(
+							map[string]any{
+								"DomesticPayment": payment,
+							},
+						),
+					)
+					return
 				}
 			}
 		}
-		amount, e := strconv.ParseFloat(pr.InstructedAmount.Amount, 64)
-		if e != nil || amount <= 0 {
-			errJSON(w, 400, "invalid amount")
-			return
-		}
-		idx := -1
+
+		accountIndex := -1
+
 		for i := range a.s.Accounts {
-			if a.s.Accounts[i].AccountID == pr.DebtorAccount {
-				idx = i
+			if accountMatchesIdentification(
+				a.s.Accounts[i],
+				request.DebtorAccount,
+			) {
+				accountIndex = i
 				break
 			}
 		}
-		if idx < 0 {
-			errJSON(w, 404, "debtor account not found")
+
+		if accountIndex < 0 {
+			errJSON(
+				w,
+				http.StatusNotFound,
+				"debtor account not found",
+			)
 			return
 		}
-		if a.s.Accounts[idx].Balance < amount {
-			errJSON(w, 422, "insufficient funds")
+
+		if !strings.EqualFold(
+			a.s.Accounts[accountIndex].Currency,
+			request.InstructedAmount.Currency,
+		) {
+			errJSON(
+				w,
+				http.StatusBadRequest,
+				"payment currency does not match debtor account currency",
+			)
 			return
 		}
-		a.s.Accounts[idx].Balance -= amount
-		id := fmt.Sprintf("PAY-%06d", len(a.s.Payments)+1)
-		p := Payment{PaymentID: id, ConsentID: pr.ConsentID, Status: "AcceptedSettlementCompleted", CreationDateTime: now(), StatusUpdateDateTime: now(), DebtorAccount: pr.DebtorAccount, CreditorName: pr.CreditorName, CreditorAccount: pr.CreditorAccount, InstructedAmount: pr.InstructedAmount, Reference: pr.Reference}
-		a.s.Payments = append(a.s.Payments, p)
-		if key != "" {
-			a.s.idempotency[key] = id
+
+		if a.s.Accounts[accountIndex].Balance < amount {
+			errJSON(
+				w,
+				http.StatusUnprocessableEntity,
+				"insufficient funds",
+			)
+			return
 		}
-		a.s.Transactions = append(a.s.Transactions, Transaction{TransactionID: "TX-" + id, AccountID: pr.DebtorAccount, Status: "Booked", BookingDateTime: now(), ValueDateTime: now(), CreditDebitIndicator: "Debit", Amount: pr.InstructedAmount, TransactionInformation: pr.Reference, MerchantName: pr.CreditorName})
-		write(w, 201, envelope(map[string]any{"DomesticPayment": p}))
+
+		// State mutation happens only after all signed-consent checks have
+		// completed successfully.
+		a.s.Accounts[accountIndex].Balance -= amount
+
+		paymentID := fmt.Sprintf(
+			"PAY-%06d",
+			len(a.s.Payments)+1,
+		)
+
+		payment := Payment{
+			PaymentID: paymentID,
+			ConsentID: ctx.ConsentID,
+
+			Status: "AcceptedSettlementCompleted",
+
+			CreationDateTime: now(),
+
+			StatusUpdateDateTime: now(),
+
+			InstructionIdentification: request.InstructionIdentification,
+
+			EndToEndIdentification: request.EndToEndIdentification,
+
+			DebtorAccount: request.DebtorAccount,
+
+			CreditorName: request.CreditorName,
+
+			CreditorAccount: request.CreditorAccount,
+
+			InstructedAmount: request.InstructedAmount,
+
+			Reference: request.Reference,
+		}
+
+		a.s.Payments = append(
+			a.s.Payments,
+			payment,
+		)
+
+		a.s.idempotency[scopedKey] = paymentID
+
+		a.s.Transactions = append(
+			a.s.Transactions,
+			Transaction{
+				TransactionID: "TX-" + paymentID,
+
+				AccountID: request.DebtorAccount,
+
+				Status: "Booked",
+
+				BookingDateTime: now(),
+
+				ValueDateTime: now(),
+
+				CreditDebitIndicator: "Debit",
+
+				Amount: request.InstructedAmount,
+
+				TransactionInformation: request.Reference,
+
+				MerchantName: request.CreditorName,
+			},
+		)
+
+		write(
+			w,
+			http.StatusCreated,
+			envelope(
+				map[string]any{
+					"DomesticPayment": payment,
+				},
+			),
+		)
+
 	default:
-		errJSON(w, 405, "method not allowed")
+		errJSON(
+			w,
+			http.StatusMethodNotAllowed,
+			"method not allowed",
+		)
 	}
 }
+
 func (a *API) paymentByID(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "GET" {
-		errJSON(w, 405, "method not allowed")
+	if r.Method != http.MethodGet {
+		errJSON(
+			w,
+			http.StatusMethodNotAllowed,
+			"method not allowed",
+		)
 		return
 	}
-	id := strings.TrimPrefix(r.URL.Path, "/api/fs/backend/services/payments/paymentservice/domestic-payments/")
+
+	ctx, err :=
+		consentContextFromRequest(
+			r,
+			"payments",
+		)
+
+	if err != nil {
+		errJSON(
+			w,
+			http.StatusUnauthorized,
+			"invalid payment consent context",
+		)
+		return
+	}
+
+	paymentID := strings.TrimPrefix(
+		r.URL.Path,
+		"/api/fs/backend/services/payments/paymentservice/domestic-payments/",
+	)
+
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	for _, p := range a.s.Payments {
-		if p.PaymentID == id {
-			write(w, 200, envelope(map[string]any{"DomesticPayment": p}))
+
+	for _, payment := range a.s.Payments {
+		if payment.PaymentID !=
+			paymentID {
+			continue
+		}
+
+		if payment.ConsentID !=
+			ctx.ConsentID {
+			errJSON(
+				w,
+				http.StatusForbidden,
+				"payment not permitted by consent",
+			)
 			return
 		}
+
+		write(
+			w,
+			http.StatusOK,
+			envelope(
+				map[string]any{
+					"DomesticPayment": payment,
+				},
+			),
+		)
+		return
 	}
-	errJSON(w, 404, "payment not found")
+
+	errJSON(
+		w,
+		http.StatusNotFound,
+		"payment not found",
+	)
 }
+
 func (a *API) funds(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		errJSON(w, 405, "method not allowed")
+	if r.Method != http.MethodPost {
+		errJSON(
+			w,
+			http.StatusMethodNotAllowed,
+			"method not allowed",
+		)
 		return
 	}
-	var fr FundsRequest
-	if json.NewDecoder(r.Body).Decode(&fr) != nil {
-		errJSON(w, 400, "invalid JSON")
+
+	var request FundsRequest
+
+	if err := json.NewDecoder(
+		r.Body,
+	).Decode(&request); err != nil {
+		errJSON(
+			w,
+			http.StatusBadRequest,
+			"invalid JSON",
+		)
 		return
 	}
-	amount, e := strconv.ParseFloat(fr.InstructedAmount.Amount, 64)
-	if e != nil {
-		errJSON(w, 400, "invalid amount")
+
+	if request.InstructedAmount.Amount == "" ||
+		request.InstructedAmount.Currency == "" {
+		errJSON(
+			w,
+			http.StatusBadRequest,
+			"InstructedAmount is required",
+		)
 		return
 	}
+
+	// Standards-facing OBFundsConfirmation1 requests require both
+	// Data.ConsentId and Data.Reference. Legacy flat decoding exists
+	// only for direct/internal test compatibility.
+	if request.structured &&
+		(request.ConsentID == "" ||
+			request.Reference == "") {
+		errJSON(
+			w,
+			http.StatusBadRequest,
+			"ConsentId and Reference are required",
+		)
+		return
+	}
+
+	ctx, err :=
+		consentContextFromRequest(
+			r,
+			"fundsconfirmations",
+		)
+
+	if err != nil {
+		errJSON(
+			w,
+			http.StatusUnauthorized,
+			"invalid funds-confirmation consent context",
+		)
+		return
+	}
+
+	debtorIdentification, err :=
+		authorizeFundsRequest(
+			ctx,
+			request,
+		)
+
+	if err != nil {
+		errJSON(
+			w,
+			consentHTTPStatus(err),
+			"funds-confirmation request not permitted by consent",
+		)
+		return
+	}
+
+	amount, err := strconv.ParseFloat(
+		request.InstructedAmount.Amount,
+		64,
+	)
+
+	if err != nil ||
+		amount <= 0 {
+		errJSON(
+			w,
+			http.StatusBadRequest,
+			"invalid amount",
+		)
+		return
+	}
+
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	for _, x := range a.s.Accounts {
-		if x.AccountID == fr.AccountID {
-			write(w, 200, envelope(map[string]any{"FundsAvailableResult": map[string]any{"FundsAvailable": x.Balance >= amount, "AccountId": fr.AccountID, "ReferenceDateTime": now()}}))
+
+	for _, account := range a.s.Accounts {
+		// The account comes exclusively from the signed authorised
+		// consent, never from caller-controlled protected-resource data.
+		if !accountMatchesIdentification(
+			account,
+			debtorIdentification,
+		) {
+			continue
+		}
+
+		if !strings.EqualFold(
+			account.Currency,
+			request.InstructedAmount.Currency,
+		) {
+			errJSON(
+				w,
+				http.StatusBadRequest,
+				"funds-confirmation currency does not match account currency",
+			)
 			return
 		}
+
+		write(
+			w,
+			http.StatusOK,
+			envelope(
+				map[string]any{
+					"ConsentId": ctx.ConsentID,
+
+					"CreationDateTime": now(),
+
+					"FundsAvailable": account.Balance >=
+						amount,
+
+					"Reference": request.Reference,
+
+					"InstructedAmount": request.InstructedAmount,
+				},
+			),
+		)
+		return
 	}
-	errJSON(w, 404, "account not found")
+
+	errJSON(
+		w,
+		http.StatusNotFound,
+		"account not found",
+	)
 }
 
 // The demo directory key is intentionally non-secret and static. Real SSA trust must come from a regulatory directory.

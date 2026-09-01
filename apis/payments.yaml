@@ -39,9 +39,11 @@ components:
   schemas:
     Payment:
       type: object
-      required: [DebtorAccount, CreditorName, CreditorAccount, InstructedAmount]
+      required: [ConsentId, InstructionIdentification, EndToEndIdentification, DebtorAccount, CreditorName, CreditorAccount, InstructedAmount]
       properties:
         ConsentId: {type: string}
+    InstructionIdentification: {type: string}
+    EndToEndIdentification: {type: string}
         DebtorAccount: {type: string}
         CreditorName: {type: string}
         CreditorAccount: {type: string}
