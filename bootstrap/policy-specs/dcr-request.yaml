@@ -1,0 +1,14 @@
+category: Security
+name: dynamicClientRegistrationRequestPolicy
+displayName: Dynamic Client Registration Request Policy
+version: v2
+description: Validates and transforms Financial Services Dynamic Client Registration requests.
+applicableFlows: [request]
+supportedGateways: [Synapse]
+supportedApiTypes: [HTTP]
+policyAttributes:
+  - {name: validateRequestJWT, displayName: Validate Request JWT, description: Validate the signed DCR request JWT, type: Boolean, required: true, defaultValue: true}
+  - {name: jwksEndpointName, displayName: JWKS Endpoint Name, description: SSA field containing the software JWKS endpoint, type: String, required: true, defaultValue: software_jwks_endpoint}
+  - {name: clientNameAttributeName, displayName: Client Name Attribute Name, description: SSA field used as the OAuth application name, type: String, required: true, defaultValue: software_client_name}
+  - {name: useSoftwareIdAsAppName, displayName: Use Software ID As Application Name, description: Use software_id instead of the configured client-name attribute, type: Boolean, required: true, defaultValue: false}
+  - {name: jwksEndpointTimeout, displayName: JWKS Endpoint Timeout, description: Timeout in milliseconds when resolving software JWKS, type: String, required: true, defaultValue: "3000"}

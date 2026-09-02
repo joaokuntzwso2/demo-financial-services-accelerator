@@ -1,0 +1,24 @@
+<!--
+  FinLink DCR response compatibility policy for token_endpoint_auth_method=tls_client_auth.
+
+  Derived from the WSO2 Financial Services APIM mediation policy template.
+  The upstream template also removes:
+      $.token_endpoint_allow_reuse_pvt_key_jwt
+
+  That metadata belongs to the private_key_jwt reuse configuration and is not
+  returned by WSO2 IS 7.2 for this demo's tls_client_auth registration profile.
+  Synapse enrich action="remove" fails when that JSONPath is absent, so this
+  variant removes only the six Identity Server-only fields that are actually
+  present for the tls_client_auth profile.
+-->
+
+<property name="HttpStatus" expression="get-property('axis2', 'HTTP_SC')"/>
+
+<filter source="$ctx:HttpStatus" regex="^(200|201)$">
+    <then>
+        <enrich>
+            <source clone="true" xpath="json-eval($.token_type_extension,$.client_name,$.require_signed_request_object,$.tls_client_certificate_bound_access_tokens,$.jwks_uri,$.ext_application_display_name)"/>
+            <target type="body" action="remove"/>
+        </enrich>
+    </then>
+</filter>

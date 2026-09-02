@@ -1,5 +1,5 @@
 diff --git a/financial-services-accelerator/components/org.wso2.financial.services.accelerator.identity.extensions/src/main/java/org/wso2/financial/services/accelerator/identity/extensions/client/registration/dcr/attribute/filter/FSAdditionalAttributeFilter.java b/financial-services-accelerator/components/org.wso2.financial.services.accelerator.identity.extensions/src/main/java/org/wso2/financial/services/accelerator/identity/extensions/client/registration/dcr/attribute/filter/FSAdditionalAttributeFilter.java
-index 2c25195d..1016383c 100644
+index 2c25195..c5a8c2e 100644
 --- a/financial-services-accelerator/components/org.wso2.financial.services.accelerator.identity.extensions/src/main/java/org/wso2/financial/services/accelerator/identity/extensions/client/registration/dcr/attribute/filter/FSAdditionalAttributeFilter.java
 +++ b/financial-services-accelerator/components/org.wso2.financial.services.accelerator.identity.extensions/src/main/java/org/wso2/financial/services/accelerator/identity/extensions/client/registration/dcr/attribute/filter/FSAdditionalAttributeFilter.java
 @@ -178,7 +178,9 @@ public class FSAdditionalAttributeFilter implements AdditionalAttributeFilter {
@@ -13,3 +13,57 @@ index 2c25195d..1016383c 100644
          Map<String, Object> additionalAttributes = applicationUpdateRequest.getAdditionalAttributes();
          // Adding fields from the configuration to be stored as SP metadata
          if (applicationUpdateRequest.getSoftwareStatement() != null) {
+@@ -224,7 +226,52 @@ public class FSAdditionalAttributeFilter implements AdditionalAttributeFilter {
+             return callExternalServiceForRetrieval(ssaParams);
+         }
+         // Filtering the attributes to be returned in the response.
+-        return new HashMap<>(ssaParams);
++        Map<String, Object> filteredAttributes = new HashMap<>(ssaParams);
++
++        /*
++         * IS DCRMService persists additional attributes as
++         * ServiceProviderProperty strings by calling Object.toString().
++         *
++         * response_types therefore gets persisted as a Java List string,
++         * for example:
++         *
++         *     [code id_token]
++         *
++         * Restore its List shape before returning the DCR representation.
++         */
++        Object responseTypes =
++                filteredAttributes.get(IdentityCommonConstants.RESPONSE_TYPES);
++
++        if (responseTypes instanceof String) {
++            String serializedResponseTypes =
++                    ((String) responseTypes).trim();
++
++            if (serializedResponseTypes.startsWith("[") &&
++                    serializedResponseTypes.endsWith("]")) {
++
++                String values = serializedResponseTypes
++                        .substring(
++                                1,
++                                serializedResponseTypes.length() - 1)
++                        .trim();
++
++                List<String> responseTypeList = new ArrayList<>();
++
++                if (!values.isEmpty()) {
++                    for (String responseType :
++                            values.split(",\\s*")) {
++
++                        responseTypeList.add(responseType);
++                    }
++                }
++
++                filteredAttributes.put(
++                        IdentityCommonConstants.RESPONSE_TYPES,
++                        responseTypeList);
++            }
++        }
++
++        return filteredAttributes;
+     }
+ 
+     @Override

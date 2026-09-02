@@ -821,18 +821,23 @@ ensure_fapi_hybrid_flow() {
   if jq -e '
       .hybridFlow.enable == true
       and .hybridFlow.responseType == "code id_token"
+      and .pushAuthorizationRequest.requirePushAuthorizationRequest == true
     ' "$before" >/dev/null; then
-    ok "IS OAuth hybrid code id_token flow is enabled"
+    ok "IS OAuth PAR + hybrid code id_token profile is enabled"
     return
   fi
 
-  log "Enabling IS OAuth hybrid code id_token flow"
+  log "Enabling mandatory PAR + IS OAuth hybrid code id_token flow"
 
   # Preserve the authoritative OIDC configuration returned by IS and change
   # only the hybrid-flow setting. "state" is response-only and must not be
   # included in the PUT representation.
   jq '
     del(.state)
+    | .pushAuthorizationRequest = (
+        (.pushAuthorizationRequest // {})
+        + {requirePushAuthorizationRequest:true}
+      )
     | .hybridFlow = {
         enable: true,
         responseType: "code id_token"
@@ -852,7 +857,7 @@ ensure_fapi_hybrid_flow() {
 
   [[ "$http" == "200" ]] || {
     cat "$after" >&2 || true
-    die "Could not enable IS OAuth hybrid flow (HTTP $http)"
+    die "Could not enable mandatory PAR + IS OAuth hybrid flow (HTTP $http)"
   }
 
   curl -ksS \
@@ -886,10 +891,10 @@ ensure_fapi_hybrid_flow() {
       idToken
     }' "$after" >&2
 
-    die "Hybrid-flow normalization damaged or failed to preserve required FAPI configuration"
+    die "PAR/hybrid normalization damaged or failed to preserve required FAPI configuration"
   fi
 
-  ok "IS OAuth hybrid code id_token flow enabled with FAPI settings preserved"
+  ok "IS OAuth mandatory PAR + hybrid code id_token enabled with FAPI settings preserved"
 }
 
 ensure_is_application_certificate() {

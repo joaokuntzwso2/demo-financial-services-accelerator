@@ -37,8 +37,12 @@ services:
       FS_EXTENSION_USER: "fs-extension"
       FS_EXTENSION_PASSWORD: "fs-extension-secret"
       FS_ARI_CERT_FILE: "/run/secrets/wso2is.crt"
+      DIRECTORY_CERT_FILE: "/run/secrets/directory.crt"
+      TPP_PUBLIC_CERT_FILE: "/run/secrets/tpp.crt"
     volumes:
       - ./.state/certs/wso2is.crt:/run/secrets/wso2is.crt:ro
+      - ./.state/certs/directory.crt:/run/secrets/directory.crt:ro
+      - ./.state/certs/tpp.crt:/run/secrets/tpp.crt:ro
     ports:
       - "127.0.0.1:${BANK_BACKEND_PORT:-8080}:8080"
     healthcheck:

@@ -163,3 +163,6 @@ required = "false"
 mask = "false"
 multiple = "false"
 priority = "2"
+
+[apim.devportal]
+enable_key_provisioning = true

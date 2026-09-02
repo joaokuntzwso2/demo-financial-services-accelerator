@@ -1706,3 +1706,102 @@ The generic Accelerator provides the event-notification infrastructure; the regu
 Consent revocation drives the authorization decision. Event notification communicates that state change to consumers; the event itself is not the cause of API rejection.
 
 The repository also configures the separate WSO2 IS `ApimOauthEventInterceptor` for OAuth/token-revocation notifications to APIM. That listener is a distinct event path and is not presented as the source of the Financial Services consent event above.
+
+---
+
+## Act 0 — TPP onboarding
+
+The Financial Services demo now starts before consent: FinLink is onboarded as a
+TPP through the Open Banking-style Dynamic Client Registration API.
+
+```text
+local regulatory-directory simulator
+        |
+        |  PS256 Software Statement Assertion (SSA)
+        v
+FinLink software identity
+        |
+        |  PS256 signed registration request + mTLS
+        v
+/open-banking/v3.3.0/register
+        |
+        v
+real OAuth client in WSO2 Identity Server
+        |
+        |  APIM out-of-band key mapping
+        v
+FinLink APIM application + API subscriptions
+        |
+        v
+consent -> authorization -> protected resource access
+```
+
+Prepare an already-running checkout after pulling the Act 0 implementation:
+
+```bash
+./scripts/prepare-dcr-act0.sh
+```
+
+Create a brand-new onboarding and show every proof:
+
+```bash
+./demo/tpp-onboarding.sh --fresh
+```
+
+Show the last non-secret onboarding proof again:
+
+```bash
+./demo/tpp-onboarding.sh show
+```
+
+The demo proves all of the following with runtime artifacts rather than static
+slides:
+
+- a local directory-issued Software Statement Assertion signed with PS256;
+- a directory JWKS containing the actual public key corresponding to the
+  generated directory certificate;
+- a FinLink software JWKS containing the actual public key corresponding to the
+  FinLink certificate;
+- a FinLink-signed PS256 registration request;
+- mutual TLS on the public DCR call;
+- creation of the OAuth client by Financial Services DCR;
+- FAPI registration metadata including redirect URI, grant profile,
+  `tls_client_auth`, certificate-bound access tokens and signed request objects;
+- resolution of the same `client_id` as a real Identity Server application;
+- mapping of that already-created client into API Manager by out-of-band key
+  provisioning;
+- subscriptions of the DCR-backed application to the Accounts, Payments and
+  Confirmation of Funds APIs;
+- authenticated DCR read and signed DCR update for the same client;
+- a certificate-bound application token;
+- FinLink loading that exact DCR-created `client_id` for the subsequent consent
+  journey.
+
+### Trust-model boundary
+
+The repository contains a **local cryptographic directory simulator**. It is not
+a connection to a real Open Banking directory and must never be presented as
+one. The simulator uses the generated local `directory.key` to issue the SSA and
+publishes only the corresponding public key through JWKS.
+
+The issuer string `OpenBanking Ltd` is used by the local simulator because the
+Financial Services Accelerator regulatory DCR profile validates the configured
+regulatory issuer. That issuer label in this demo does **not** mean that the
+software statement was issued by the real Open Banking Limited directory.
+
+For compactness, the demo also reuses the generated FinLink RSA certificate/key
+pair for both software-request signing and mTLS transport. Production
+deployments should follow the applicable directory/regulatory requirements for
+key separation, certificate profiles and lifecycle.
+
+The customer-facing journey is therefore:
+
+```text
+TPP onboarding
+   -> trust establishment
+   -> API subscription
+   -> consent
+   -> authorization
+   -> resource access
+   -> consent lifecycle / eventing
+```

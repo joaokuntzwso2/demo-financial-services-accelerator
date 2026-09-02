@@ -1,17 +1,168 @@
-openapi: 3.0.3
-info: {title: Acme Bank Dynamic Client Registration API, version: 3.3.0}
-servers: [{url: https://localhost:8243/open-banking/v3.3/register}]
+swagger: '2.0'
+
+info:
+  title: AcmeBankDynamicClientRegistrationAPI
+  description: >
+    Open Banking-style Dynamic Client Registration API used by the FinLink demo
+    to create, retrieve, update and delete OAuth client registrations.
+  version: v3.3.0
+
+basePath: /open-banking/{version}
+
+schemes:
+  - https
+
+consumes:
+  - application/jwt
+
+produces:
+  - application/json
+
 paths:
-  /:
+  /register:
     post:
-      summary: Register a TPP client using signed software metadata
-      requestBody: {required: true, content: {application/jwt: {schema: {type: string}}}}
-      responses: {'201': {description: Client registered}}
+      summary: Register a TPP OAuth client
+      description: >
+        The registration request is a signed JWT containing a signed Software
+        Statement Assertion. No prior OAuth access token is required.
+      parameters:
+        - name: requestBody
+          in: body
+          required: true
+          schema:
+            type: string
+            format: JWT
+      responses:
+        '201':
+          description: Client registered
+          schema:
+            $ref: '#/definitions/ClientRegistration'
+        '400':
+          description: Invalid client registration metadata
+          schema:
+            $ref: '#/definitions/RegistrationError'
+      x-auth-type: None
+      x-throttling-tier: Unlimited
+
+  /register/{ClientId}:
+    parameters:
+      - name: ClientId
+        in: path
+        required: true
+        type: string
+
     get:
-      summary: Read registration
-      parameters: [{name: Authorization, in: header, required: true, schema: {type: string}}]
-      responses: {'200': {description: Registration}}
+      summary: Read a TPP OAuth client registration
+      parameters:
+        - $ref: '#/parameters/Authorization'
+      responses:
+        '200':
+          description: Client registration
+          schema:
+            $ref: '#/definitions/ClientRegistration'
+        '401':
+          description: Invalid application access token
+        '403':
+          description: Access token is not bound to this client
+      security:
+        - TPPOAuth2Security: []
+      x-auth-type: Application
+      x-throttling-tier: Unlimited
+
     put:
-      summary: Update registration
-      requestBody: {required: true, content: {application/jwt: {schema: {type: string}}}}
-      responses: {'200': {description: Registration updated}}
+      summary: Update a TPP OAuth client registration
+      parameters:
+        - $ref: '#/parameters/Authorization'
+        - name: requestBody
+          in: body
+          required: true
+          schema:
+            type: string
+            format: JWT
+      responses:
+        '200':
+          description: Client registration updated
+          schema:
+            $ref: '#/definitions/ClientRegistration'
+        '400':
+          description: Invalid client registration metadata
+          schema:
+            $ref: '#/definitions/RegistrationError'
+        '401':
+          description: Invalid application access token
+        '403':
+          description: Access token is not bound to this client
+      security:
+        - TPPOAuth2Security: []
+      x-auth-type: Application
+      x-throttling-tier: Unlimited
+
+    delete:
+      summary: Delete a TPP OAuth client registration
+      parameters:
+        - $ref: '#/parameters/Authorization'
+      responses:
+        '204':
+          description: Client registration deleted
+        '401':
+          description: Invalid application access token
+        '403':
+          description: Access token is not bound to this client
+      security:
+        - TPPOAuth2Security: []
+      x-auth-type: Application
+      x-throttling-tier: Unlimited
+
+parameters:
+  Authorization:
+    name: Authorization
+    in: header
+    required: true
+    type: string
+    description: OAuth 2.0 Bearer application access token.
+
+definitions:
+  ClientRegistration:
+    type: object
+    additionalProperties: true
+    properties:
+      client_id:
+        type: string
+      client_secret:
+        type: string
+      redirect_uris:
+        type: array
+        items:
+          type: string
+      grant_types:
+        type: array
+        items:
+          type: string
+      response_types:
+        type: array
+        items:
+          type: string
+      token_endpoint_auth_method:
+        type: string
+      jwks_uri:
+        type: string
+      tls_client_certificate_bound_access_tokens:
+        type: boolean
+      require_signed_request_object:
+        type: boolean
+
+  RegistrationError:
+    type: object
+    additionalProperties: true
+    properties:
+      error:
+        type: string
+      error_description:
+        type: string
+
+securityDefinitions:
+  TPPOAuth2Security:
+    type: oauth2
+    flow: application
+    tokenUrl: https://localhost:9446/oauth2/token
+    scopes: {}

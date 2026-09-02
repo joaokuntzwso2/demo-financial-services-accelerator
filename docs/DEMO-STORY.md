@@ -1,5 +1,26 @@
 # Demo story — Acme Bank opens APIs to FinLink
 
+## Act 0 — TPP onboarding
+
+Start with FinLink before it has an OAuth client. Show the local demo directory
+JWKS and the FinLink software JWKS, then run `./demo/tpp-onboarding.sh --fresh`.
+The local directory simulator signs FinLink's Software Statement Assertion with
+PS256. FinLink embeds that SSA in its own PS256-signed registration request and
+calls `/open-banking/v3.3.0/register` using mTLS.
+
+Show the resulting `client_id` and the registration profile: redirect URI, grant
+types, `tls_client_auth`, certificate-bound access tokens, signed request
+objects and JWKS. Prove that the same client now exists as a WSO2 Identity
+Server OAuth application. Then show the out-of-band mapping to the API Manager
+application and the three API subscriptions. Finish the act by reading the
+registration and submitting a signed update with the same client-bound
+application token.
+
+Be explicit about the trust boundary: the repository's directory is a local
+cryptographic simulator, not a real regulatory directory. The cryptographic
+mechanics, DCR processing, client creation, APIM mapping and subsequent WSO2
+authorization are real.
+
 ## Act 1 — Governance before connectivity
 
 Acme Bank wants to expose customer data and payment capabilities to an external fintech without turning the core banking estate into a public endpoint. Show the APIs in APIM Publisher, their lifecycle state, version, resources, scopes and deployed revision. Explain that the bank can govern the product independently of the backend implementation.

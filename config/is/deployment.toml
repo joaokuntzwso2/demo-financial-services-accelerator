@@ -170,6 +170,14 @@ trusted_issuer = "CN=WSO2 Open Banking Demo Root CA, O=WSO2 Demo, C=BR"
 cert_thumbprint = "*"
 allowed_username = ["admin"]
 
+# APIM -> IS machine-to-machine REST authentication.
+# No WSO2-Identity-User header is sent, so this must use a system mapping.
+[[client_certificate_based_authentication.system_thumbprint_mapping]]
+trusted_issuer = "CN=WSO2 Open Banking Demo Root CA, O=WSO2 Demo, C=BR"
+cert_thumbprint = "C6:C1:B4:73:BB:AD:A4:CC:E7:3E:72:64:9E:5A:B5:1D:A7:39:BA:A1:D7:80:E5:FB:34:58:9F:09:5F:D9:27:77"
+allowed_system_user = "admin"
+
+
 # Financial Services / Open Banking consent experience.
 [authentication.endpoints]
 login_url = "https://localhost:9446/authenticationendpoint/login.do"
@@ -231,9 +239,12 @@ enable_role_validation = true
 
 # Demo-friendly Open Banking DCR setup. For production, point SSA/JWKS to the trusted directory.
 [oauth.dcr]
+ssa_jkws = "http://bank-backend:8080/directory/jwks.json"
 ssa_jwks = "http://bank-backend:8080/directory/jwks.json"
-
 enable_fapi_enforcement = true
+
+[[open_banking.dcr.regulatory_issuers.iss]]
+name = "OpenBanking Ltd"
 [oauth.oidc.fapi]
 enable_security_profile = true
 enable_ciba_profile = false

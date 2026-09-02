@@ -102,8 +102,9 @@ trap - EXIT
 
 # Bootstrap demo identities, APIM application, subscriptions, keys and RBAC.
 echo
-echo "==> Bootstrapping demo users and API access"
-./scripts/bootstrap-demo-access.sh .
+echo "==> Act 0 — Onboarding FinLink through Financial Services DCR"
+./scripts/publish-dcr-api.sh
+./demo/tpp-onboarding.sh
 ./scripts/verify.sh
 cat <<EOF
 

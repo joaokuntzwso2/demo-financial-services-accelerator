@@ -36,6 +36,7 @@ func (a *API) Handler() http.Handler {
 	m.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { write(w, 200, map[string]any{"status": "ok"}) })
 	m.HandleFunc("/demo/summary", a.summary)
 	m.HandleFunc("/directory/jwks.json", directoryJWKS)
+	m.HandleFunc("/directory/software/finlink/jwks.json", softwareJWKS)
 	m.HandleFunc("/extensions/populate-consent-authorize-screen", a.populateConsentAuthorizeScreen)
 	m.HandleFunc("/extensions/validate-consent-access", a.validateConsentAccess)
 	baseA := "/api/fs/backend/services/accounts/accountservice"
@@ -936,9 +937,4 @@ func (a *API) funds(w http.ResponseWriter, r *http.Request) {
 		http.StatusNotFound,
 		"account not found",
 	)
-}
-
-// The demo directory key is intentionally non-secret and static. Real SSA trust must come from a regulatory directory.
-func directoryJWKS(w http.ResponseWriter, r *http.Request) {
-	write(w, 200, map[string]any{"keys": []any{}})
 }
