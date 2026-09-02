@@ -1674,3 +1674,35 @@ Then run the lifecycle demo standalone:
 `demo/run-all.sh` runs the lifecycle sequence at the end with `--reuse`, so the Accounts consent created by the normal Accounts journey is reused rather than creating a second Alice authorization.
 
 The lifecycle proof intentionally preserves the user access token after consent revocation. FinLink exposes only a short SHA-256 fingerprint of that token in lifecycle output, allowing the presenter to prove that the token did not change while avoiding disclosure of the token itself.
+
+---
+
+## Financial Services eventing demo
+
+The demo exposes the Accelerator's generalized Event Notification capability in addition to live consent enforcement.
+
+Run the complete consent lifecycle flow:
+
+```bash
+./demo/consent-lifecycle.sh
+```
+
+After Alice revokes the Accounts consent, the demo:
+
+1. observes the real consent transition to `Revoked`;
+2. publishes a `consent-authorization-revoked` notification through the Financial Services Event Creation API;
+3. proves persistence in the Accelerator's `FS_NOTIFICATION` / `FS_NOTIFICATION_EVENT` store;
+4. polls the event through the Financial Services Event Polling API and correlates the signed Security Event Token (SET) by its `jti`;
+5. repeats the exact same `/accounts` request with the same access-token fingerprint and the same mTLS client and proves that consent enforcement rejects it.
+
+Inspect the latest correlated event independently:
+
+```bash
+./demo/events.sh
+```
+
+The generic Accelerator provides the event-notification infrastructure; the regulatory/toolkit layer decides when and which specification-specific event should be created. In this demo, the lifecycle orchestration publishes the notification only after the real Consent Manager revocation has been observed.
+
+Consent revocation drives the authorization decision. Event notification communicates that state change to consumers; the event itself is not the cause of API rejection.
+
+The repository also configures the separate WSO2 IS `ApimOauthEventInterceptor` for OAuth/token-revocation notifications to APIM. That listener is a distinct event path and is not presented as the source of the Financial Services consent event above.

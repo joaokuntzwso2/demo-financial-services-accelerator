@@ -70,6 +70,8 @@ case "$(printf '%s' "$CONSENT_STATUS" | tr '[:upper:]' '[:lower:]')" in
   *) die "Accounts consent is not active before the demo: $CONSENT_STATUS" ;;
 esac
 
+BEFORE_CONSENT_STATUS="$CONSENT_STATUS"
+
 BEFORE="$(portal_post "$PORTAL_URL/api/consent-lifecycle/accounts/retest")"
 BEFORE_HTTP="$(printf '%s' "$BEFORE" | jq -er '.http')"
 BEFORE_FP="$(printf '%s' "$BEFORE" | jq -er '.request.token_fingerprint')"
@@ -125,13 +127,34 @@ echo "4. LIVE CONSENT AFTER REVOCATION"
 echo "============================================================"
 printf '%s\n' "$LIFECYCLE" | jq .
 
+echo
+echo "============================================================"
+echo "5. FINANCIAL SERVICES EVENT NOTIFICATION"
+echo "============================================================"
+
+EVENT_RESULT="$(
+  "$ROOT/demo/events.sh" publish-revocation \
+    --consent-id "$CONSENT_ID" \
+    --previous-status "$BEFORE_CONSENT_STATUS" \
+    --current-status "$CONSENT_STATUS" \
+    --token-fingerprint "$BEFORE_FP" \
+    --json
+)"
+
+EVENT_NOTIFICATION_ID="$(
+  printf '%s' "$EVENT_RESULT" | jq -er '.notification_id'
+)"
+
+echo "[OK] Financial Services event created and delivered as signed SET"
+echo "[OK] notification id: $EVENT_NOTIFICATION_ID"
+
 AFTER="$(portal_post "$PORTAL_URL/api/consent-lifecycle/accounts/retest")"
 AFTER_HTTP="$(printf '%s' "$AFTER" | jq -er '.http')"
 AFTER_FP="$(printf '%s' "$AFTER" | jq -er '.request.token_fingerprint')"
 
 echo
 echo "============================================================"
-echo "5. EXACT SAME ACCOUNTS CALL AFTER REVOCATION"
+echo "6. EXACT SAME ACCOUNTS CALL AFTER REVOCATION"
 echo "============================================================"
 printf '%s\n' "$AFTER" | jq .
 
@@ -144,12 +167,27 @@ printf '%s\n' "$AFTER" | jq .
 printf '%s' "$AFTER" | jq -e '.rejected == true' >/dev/null \
   || die "post-revocation request was not marked rejected"
 
+"$ROOT/demo/events.sh" record-enforcement \
+  --notification-id "$EVENT_NOTIFICATION_ID" \
+  --before-http "$BEFORE_HTTP" \
+  --after-http "$AFTER_HTTP" \
+  --token-fingerprint "$AFTER_FP" \
+  --rejected true
+
+echo
+echo "============================================================"
+echo "7. CORRELATED EVENT + ENFORCEMENT"
+echo "============================================================"
+
+"$ROOT/demo/events.sh" --notification-id "$EVENT_NOTIFICATION_ID"
+
 echo
 echo "[OK] CONSENT LIFECYCLE DEMO PASSED"
 echo "[OK] /accounts before revoke: HTTP $BEFORE_HTTP"
 echo "[OK] /accounts after revoke:  HTTP $AFTER_HTTP"
 echo "[OK] same access token fingerprint: $BEFORE_FP"
 echo "[OK] live consent status after revoke: $CONSENT_STATUS"
+echo "[OK] event notification id: $EVENT_NOTIFICATION_ID"
 echo
 echo "Consent is live policy state: the same OAuth access token and the same mTLS"
 echo "client were presented to the same /accounts resource; only consent state changed."

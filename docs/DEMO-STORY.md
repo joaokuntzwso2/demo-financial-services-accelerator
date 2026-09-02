@@ -43,3 +43,9 @@ Show these controls deliberately:
 ## Business message
 
 The demo is not “three WSO2 products in Docker.” It is an end-to-end trust chain: **TPP identity → customer authentication → explicit consent → financial-grade token → mTLS API call → governed API → bank system of record → auditable control points**.
+
+## Act — Eventing and live policy
+
+Revoke Alice's Accounts consent in the WSO2 Consent Manager. Show that the consent moves from `Authorised` to `Revoked`. The lifecycle demo then creates a real Financial Services `consent-authorization-revoked` event through the Accelerator Event Creation API and receives it through Event Polling as a signed Security Event Token. Run `./demo/events.sh` to show the notification ID, ConsentId/resource correlation, event type, persisted event details and SET claims.
+
+Finally, repeat the exact same `/accounts` request. The token fingerprint and mTLS client remain unchanged, but the request is rejected because the live consent state is now revoked. Explain the two consequences separately: consent state controls enforcement; eventing communicates the state change to interested consumers.

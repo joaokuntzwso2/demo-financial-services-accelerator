@@ -549,11 +549,6 @@ func baseFor(cfg Config, domain string) string {
 }
 
 func (p *Portal) createConsent(ctx context.Context, domain string) (string, string, string, []string, error) {
-	token, err := p.applicationToken(ctx, scopeFor(domain))
-	if err != nil {
-		return "", "", "", nil, err
-	}
-
 	var path string
 	var body any
 	switch domain {
@@ -570,7 +565,14 @@ func (p *Portal) createConsent(ctx context.Context, domain string) (string, stri
 		return "", "", "", nil, errors.New("unsupported domain")
 	}
 
-	statusCode, raw, err := p.gatewayJSON(ctx, p.mtlsClient, http.MethodPost, baseFor(p.cfg, domain)+path, token, body, nil)
+	statusCode, raw, err := p.gatewayJSONWithApplicationToken(
+		ctx,
+		domain,
+		http.MethodPost,
+		baseFor(p.cfg, domain)+path,
+		body,
+		nil,
+	)
 	if err != nil {
 		return "", "", "", nil, err
 	}
@@ -707,6 +709,70 @@ func (p *Portal) applicationToken(ctx context.Context, scope string) (string, er
 	p.appTokens[scope] = AppToken{Token: out.AccessToken, Expiry: exp}
 	p.mu.Unlock()
 	return out.AccessToken, nil
+}
+
+func (p *Portal) invalidateApplicationToken(scope, token string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	cached, ok := p.appTokens[scope]
+	if ok && cached.Token == token {
+		delete(p.appTokens, scope)
+	}
+}
+
+// gatewayJSONWithApplicationToken is used only for consent-management calls
+// authenticated with a client_credentials application token.
+//
+// If APIM rejects a still-locally-valid cached application token with 401,
+// invalidate that exact cached token, obtain a fresh token from IS, and retry
+// the same request once. User access tokens deliberately do not use this
+// helper: their 401/403 responses are security decisions that must remain
+// visible to the caller.
+func (p *Portal) gatewayJSONWithApplicationToken(
+	ctx context.Context,
+	domain string,
+	method string,
+	endpoint string,
+	body any,
+	headers map[string]string,
+) (int, []byte, error) {
+	scope := scopeFor(domain)
+
+	token, err := p.applicationToken(ctx, scope)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	code, raw, err := p.gatewayJSON(
+		ctx,
+		p.mtlsClient,
+		method,
+		endpoint,
+		token,
+		body,
+		headers,
+	)
+	if err != nil || code != http.StatusUnauthorized {
+		return code, raw, err
+	}
+
+	p.invalidateApplicationToken(scope, token)
+
+	token, err = p.applicationToken(ctx, scope)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	return p.gatewayJSON(
+		ctx,
+		p.mtlsClient,
+		method,
+		endpoint,
+		token,
+		body,
+		headers,
+	)
 }
 
 func (p *Portal) createPAR(ctx context.Context, domain, consentID string) (*AuthSession, string, error) {
@@ -1149,10 +1215,6 @@ func (p *Portal) handleAccountsConsentRetest(w http.ResponseWriter, r *http.Requ
 }
 
 func (p *Portal) getConsent(ctx context.Context, domain, consentID string) (string, string, []string, error) {
-	appToken, err := p.applicationToken(ctx, scopeFor(domain))
-	if err != nil {
-		return "", "", nil, err
-	}
 	var path string
 	switch domain {
 	case "accounts":
@@ -1162,7 +1224,14 @@ func (p *Portal) getConsent(ctx context.Context, domain, consentID string) (stri
 	case "cof":
 		path = "/funds-confirmation-consents/"
 	}
-	code, raw, err := p.gatewayJSON(ctx, p.mtlsClient, http.MethodGet, baseFor(p.cfg, domain)+path+url.PathEscape(consentID), appToken, nil, nil)
+	code, raw, err := p.gatewayJSONWithApplicationToken(
+		ctx,
+		domain,
+		http.MethodGet,
+		baseFor(p.cfg, domain)+path+url.PathEscape(consentID),
+		nil,
+		nil,
+	)
 	if err != nil {
 		return "", "", nil, err
 	}
