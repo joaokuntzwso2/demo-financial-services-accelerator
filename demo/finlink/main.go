@@ -151,6 +151,8 @@ func main() {
 	mux.HandleFunc("/api/start", p.handleStart)
 	mux.HandleFunc("/api/action", p.handleAction)
 	mux.HandleFunc("/api/negative-tests", p.handleNegativeTests)
+	mux.HandleFunc("/api/consent-lifecycle/accounts", p.handleAccountsConsentLifecycle)
+	mux.HandleFunc("/api/consent-lifecycle/accounts/retest", p.handleAccountsConsentRetest)
 	mux.HandleFunc("/api/reset", p.handleReset)
 	mux.HandleFunc("/callback", p.handleCallback)
 	mux.HandleFunc("/callback/fragment", p.handleCallbackFragment)
@@ -1051,6 +1053,99 @@ func certificateThumbprint(certPath string) (string, error) {
 	}
 	sum := sha256.Sum256(cert.Raw)
 	return base64.RawURLEncoding.EncodeToString(sum[:]), nil
+}
+
+func accessTokenFingerprint(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:8])
+}
+
+func (p *Portal) handleAccountsConsentLifecycle(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	p.mu.RLock()
+	ds := p.domains["accounts"]
+	if ds == nil || ds.ConsentID == "" {
+		p.mu.RUnlock()
+		writeError(w, http.StatusConflict, "accounts consent is not available; authorize Accounts first")
+		return
+	}
+	consentID := ds.ConsentID
+	token := ds.AccessToken
+	p.mu.RUnlock()
+
+	status, expires, permissions, err := p.getConsent(r.Context(), "accounts", consentID)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	fingerprint := ""
+	if token != "" {
+		fingerprint = accessTokenFingerprint(token)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"consent_id":           consentID,
+		"consent_status":       status,
+		"expires":              expires,
+		"permissions":          permissions,
+		"portal_url":           p.cfg.IS + "/consentmgr",
+		"resource_url":         baseFor(p.cfg, "accounts") + "/accounts",
+		"access_token_present": token != "",
+		"token_fingerprint":    fingerprint,
+	})
+}
+
+func (p *Portal) handleAccountsConsentRetest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	p.mu.RLock()
+	ds := p.domains["accounts"]
+	if ds == nil || ds.ConsentID == "" || ds.AccessToken == "" {
+		p.mu.RUnlock()
+		writeError(w, http.StatusConflict, "Accounts must be authorized before the lifecycle retest")
+		return
+	}
+	consentID := ds.ConsentID
+	token := ds.AccessToken
+	p.mu.RUnlock()
+
+	endpoint := baseFor(p.cfg, "accounts") + "/accounts"
+	fingerprint := accessTokenFingerprint(token)
+
+	code, raw, err := p.gatewayJSON(
+		r.Context(),
+		p.mtlsClient,
+		http.MethodGet,
+		endpoint,
+		token,
+		nil,
+		nil,
+	)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"request": map[string]any{
+			"method":            http.MethodGet,
+			"url":               endpoint,
+			"consent_id":        consentID,
+			"token_fingerprint": fingerprint,
+			"mtls":              true,
+		},
+		"http":     code,
+		"rejected": code < 200 || code >= 300,
+		"response": decodeAny(raw),
+	})
 }
 
 func (p *Portal) getConsent(ctx context.Context, domain, consentID string) (string, string, []string, error) {

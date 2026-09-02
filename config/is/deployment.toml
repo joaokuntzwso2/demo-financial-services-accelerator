@@ -203,8 +203,14 @@ validator = "org.wso2.financial.services.accelerator.consent.mgt.extensions.vali
 signature.alias = "wso2apim"
 jwt.payload.enabled = true
 
+[financial_services.consent.portal.client_credentials]
+client_id = "$env{CONSENT_MANAGER_CLIENT_ID}"
+client_secret = "$env{CONSENT_MANAGER_CLIENT_SECRET}"
+
 [financial_services.consent.portal.params]
 identity_server_base_url = "https://localhost:9446"
+application_name_param = "client_name"
+application_logo_uri_param = "software_logo_uri"
 
 [financial_services.consent.consent_id_extraction]
 json_path = "/id_token/openbanking_intent_id/value"

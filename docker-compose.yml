@@ -63,6 +63,8 @@ services:
       bank-backend:
         condition: service_healthy
     environment:
+      CONSENT_MANAGER_CLIENT_ID: "${CONSENT_MANAGER_CLIENT_ID:-not-configured}"
+      CONSENT_MANAGER_CLIENT_SECRET: "${CONSENT_MANAGER_CLIENT_SECRET:-not-configured}"
       JAVA_OPTS: "-Xms1g -Xmx2g -Djavax.net.ssl.trustStore=/home/wso2carbon/wso2is-${IS_VERSION:-7.2.0}/repository/resources/security/client-truststore.p12 -Djavax.net.ssl.trustStorePassword=wso2carbon -Djavax.net.ssl.trustStoreType=PKCS12"
     ports:
       - "127.0.0.1:${IS_HTTPS_PORT:-9446}:9446"

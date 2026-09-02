@@ -1634,3 +1634,43 @@ TPP trust
 ```
 
 That is the architecture the demo is designed to explain.
+
+
+---
+
+## Consent lifecycle demo
+
+The FinLink demo includes a live consent lifecycle sequence:
+
+```text
+Alice authorizes Accounts
+        |
+        v
+GET /accounts -> 200
+        |
+        v
+WSO2 Consent Manager -> locate exact consent -> revoke
+        |
+        v
+repeat the same GET /accounts using the same access token + same mTLS client
+        |
+        v
+request rejected by live consent enforcement
+```
+
+Provision the WSO2 Financial Services Consent Manager once:
+
+```bash
+./scripts/configure-consent-manager.sh
+./demo/consent-manager-preflight.sh
+```
+
+Then run the lifecycle demo standalone:
+
+```bash
+./demo/consent-lifecycle.sh
+```
+
+`demo/run-all.sh` runs the lifecycle sequence at the end with `--reuse`, so the Accounts consent created by the normal Accounts journey is reused rather than creating a second Alice authorization.
+
+The lifecycle proof intentionally preserves the user access token after consent revocation. FinLink exposes only a short SHA-256 fingerprint of that token in lifecycle output, allowing the presenter to prove that the token did not change while avoiding disclosure of the token itself.

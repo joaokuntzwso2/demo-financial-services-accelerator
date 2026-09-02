@@ -16,11 +16,15 @@ Create an account-access consent with granular permissions. The Accelerator owns
 
 Call Accounts, Balances and Transactions through APIM. Use the mock data to show multiple account types/currencies and a credible transaction history. Make clear that APIM is enforcing the contract/security while the Go service remains the domain backend.
 
-## Act 5 — Payment initiation
+## Act 5 — Consent is live policy state
+
+After Alice authorizes Accounts, call `/accounts` through APIM and show the successful response. Open the WSO2 Consent Manager, locate the exact Accounts consent, and revoke it. Then repeat the same `/accounts` request from FinLink with the same access token and the same mTLS client certificate. The request must now be rejected. Explain that the OAuth token still exists, but authorization depends on the current consent lifecycle state enforced at request time.
+
+## Act 6 — Payment initiation
 
 Create/authorize payment consent, then POST a domestic payment with `x-idempotency-key`. The backend debits the account in-memory and emits a matching booked transaction. Repeating the same idempotency key returns the same payment instead of creating a duplicate.
 
-## Act 6 — Confirmation of Funds
+## Act 7 — Confirmation of Funds
 
 A permitted party asks whether an account can cover a given amount. The API returns a boolean without exposing the actual balance, demonstrating data minimization.
 
