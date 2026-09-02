@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FinLink Demo Portal</title>
+<style>
+:root{color-scheme:dark;--bg:#071018;--panel:#101b25;--panel2:#142331;--line:#263746;--text:#edf4f8;--muted:#95a8b7;--accent:#f14e23;--good:#4bd58b;--bad:#ff6b6b;--warn:#f7c66b}
+*{box-sizing:border-box} body{margin:0;background:linear-gradient(145deg,#071018,#0b141d 55%,#081019);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:1220px;margin:0 auto;padding:28px 22px 60px}.hero{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;margin-bottom:22px}.brand h1{margin:0;font-size:30px;letter-spacing:-.5px}.brand h1 span{color:var(--accent)}.brand p{margin:8px 0 0;color:var(--muted);max-width:760px}.pill{border:1px solid var(--line);background:#0b151e;padding:10px 14px;border-radius:999px;color:var(--muted);font-size:13px}
+.grid{display:grid;grid-template-columns:1.2fr .8fr;gap:18px}.stack{display:grid;gap:18px}.card{background:rgba(16,27,37,.94);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:0 14px 40px rgba(0,0,0,.22)}.card h2{margin:0 0 14px;font-size:18px}.card h3{margin:16px 0 10px;font-size:14px;color:#c7d5df}.row{display:flex;flex-wrap:wrap;gap:9px;align-items:center}button{appearance:none;border:1px solid #374d5e;background:#172736;color:#f6fbff;border-radius:9px;padding:10px 13px;font-weight:650;cursor:pointer}button:hover{border-color:#5c768a;background:#1c3041}button.primary{background:var(--accent);border-color:var(--accent);color:white}button:disabled{opacity:.42;cursor:not-allowed}.kv{display:grid;grid-template-columns:145px 1fr;gap:8px 13px;font-size:13px}.kv .k{color:var(--muted)}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all}.proofs{display:grid;grid-template-columns:1fr 1fr;gap:8px}.proof{border:1px solid var(--line);background:#0d1821;border-radius:9px;padding:9px 10px;font-size:13px}.proof.ok{border-color:#275c43}.proof.ok::before{content:"✓ ";color:var(--good);font-weight:800}.proof.no::before{content:"○ ";color:var(--muted)}.status{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:5px 9px;border:1px solid var(--line);font-size:12px}.status.ok{color:var(--good);border-color:#275c43}.status.wait{color:var(--warn);border-color:#68552e}.status.off{color:var(--muted)}pre{white-space:pre-wrap;word-break:break-word;background:#071018;border:1px solid #20303d;border-radius:11px;padding:13px;min-height:90px;max-height:420px;overflow:auto;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:#cde0eb}.domain{border-top:1px solid var(--line);padding-top:14px;margin-top:14px}.domain:first-of-type{border-top:0;padding-top:0;margin-top:0}.domain-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.domain-title strong{font-size:15px}.inputs{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.inputs input,.inputs select{background:#0b151e;color:var(--text);border:1px solid #374d5e;border-radius:8px;padding:9px 10px}.toast{position:fixed;right:20px;bottom:20px;max-width:460px;background:#111d27;border:1px solid var(--line);border-radius:12px;padding:12px 15px;box-shadow:0 12px 32px rgba(0,0,0,.35);display:none}.toast.show{display:block}.toast.err{border-color:#7a3434;color:#ffd5d5}.tiny{font-size:12px;color:var(--muted)}.banner{background:#0e1c26;border:1px solid #284154;border-left:4px solid var(--accent);border-radius:10px;padding:12px 14px;margin-bottom:18px;font-size:13px;color:#c5d6e1}
+@media(max-width:900px){.grid{grid-template-columns:1fr}.hero{flex-direction:column}.proofs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+<div class="hero">
+  <div class="brand">
+    <h1><span>FinLink</span> Demo Portal</h1>
+    <p>Real TPP browser authorization against WSO2 Financial Services. No fake approval, no consent-database mutation, and protected traffic stays FinLink → APIM Gateway → WSO2 Financial Services → Bank.</p>
+  </div>
+  <div class="pill">Local TPP client · FAPI 1.0 Advanced-style hybrid demo</div>
+</div>
+
+<div class="banner" id="authBanner">Ready. Create a consent to begin a real PSU authorization flow.</div>
+
+<div class="grid">
+<div class="stack">
+<section class="card">
+  <h2>Banking journeys</h2>
+
+  <div class="domain">
+    <div class="domain-title"><strong>Accounts · Alice</strong><span id="accountsStatus" class="status off">No consent</span></div>
+    <div class="row">
+      <button class="primary" onclick="startAuth('accounts')">Request consent</button>
+      <button data-auth="accounts" onclick="action('accounts','accounts')">View accounts</button>
+      <select id="accountSelect"><option value="">Select account</option></select>
+      <button data-auth="accounts" onclick="accountAction('balances')">Balances</button>
+      <button data-auth="accounts" onclick="accountAction('transactions')">Transactions</button>
+    </div>
+  </div>
+
+  <div class="domain">
+    <div class="domain-title"><strong>Payments · Bob</strong><span id="paymentsStatus" class="status off">No consent</span></div>
+    <div class="row">
+      <button class="primary" onclick="startAuth('payments')">Create & authorize consent</button>
+      <button data-auth="payments" onclick="action('payments','execute')">Execute payment</button>
+      <button data-auth="payments" onclick="action('payments','status')">Payment status</button>
+    </div>
+    <div class="tiny" style="margin-top:8px">149.90 USD · Bob Demo → Energia Sul · consent-bound Initiation + Risk</div>
+  </div>
+
+  <div class="domain">
+    <div class="domain-title"><strong>Confirmation of Funds · Carol</strong><span id="cofStatus" class="status off">No consent</span></div>
+    <div class="row">
+      <button class="primary" onclick="startAuth('cof')">Create & authorize consent</button>
+      <button data-auth="cof" onclick="checkFunds()">Check funds</button>
+    </div>
+    <div class="inputs">
+      <input id="cofAmount" value="10.00" inputmode="decimal" aria-label="Amount">
+      <input id="cofCurrency" value="USD" maxlength="3" aria-label="Currency">
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Result</h2>
+  <pre id="result">No API call yet.</pre>
+</section>
+</div>
+
+<div class="stack">
+<section class="card">
+  <h2>TPP identity</h2>
+  <div class="kv">
+    <div class="k">Client ID</div><code>{{.ClientID}}</code>
+    <div class="k">mTLS certificate</div><div>✓ generated TPP certificate</div>
+    <div class="k">Portal</div><code>{{.PortalURL}}</code>
+    <div class="k">Token binding</div><div id="binding">Waiting for PSU token</div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Current consent</h2>
+  <div id="consentPanel" class="kv">
+    <div class="k">Domain</div><div>—</div>
+    <div class="k">Status</div><div>—</div>
+    <div class="k">Consent ID</div><div>—</div>
+    <div class="k">Expires</div><div>—</div>
+    <div class="k">Permissions</div><div>—</div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Security proof</h2>
+  <div class="proofs">
+    <div id="p-par" class="proof no">PAR</div>
+    <div id="p-pkce" class="proof no">PKCE S256</div>
+    <div id="p-jar" class="proof no">PS256 request object</div>
+    <div id="p-mtls" class="proof no">mTLS</div>
+    <div id="p-consent" class="proof no">consent_id</div>
+    <div id="p-id" class="proof no">ID token signature</div>
+    <div id="p-at" class="proof no">Access token signature</div>
+    <div id="p-cnf" class="proof no">x5t#S256 bound</div>
+  </div>
+  <p id="proofDetail" class="tiny">Security evidence appears after authorization.</p>
+</section>
+
+<section class="card">
+  <h2>Security regression</h2>
+  <button onclick="negativeTests()">Run negative tests</button>
+  <p class="tiny">Requires all three real PSU consents first. Tests missing mTLS, wrong scope, payment Risk tampering, and CoF wrong currency.</p>
+</section>
+</div>
+</div>
+</main>
+
+<dialog id="authDialog" style="max-width:520px;width:calc(100% - 32px);background:#101b25;color:#edf4f8;border:1px solid #374d5e;border-radius:16px;padding:20px">
+  <h2 style="margin-top:0">Continue to WSO2</h2>
+  <p class="tiny">This is a real PSU login and consent approval. FinLink will capture the callback automatically.</p>
+  <div class="kv" style="margin:16px 0">
+    <div class="k">Consent</div><code id="dlgConsent"></code>
+    <div class="k">Username</div><code id="dlgUser"></code>
+    <div class="k">Password</div><code id="dlgPass"></code>
+  </div>
+  <div class="row" style="justify-content:flex-end">
+    <button onclick="document.getElementById('authDialog').close()">Cancel</button>
+    <button class="primary" id="dlgContinue">Continue to WSO2</button>
+  </div>
+</dialog>
+
+<div id="toast" class="toast"></div>
+
+<script>
+let state = null;
+let selectedDomain = "accounts";
+
+function esc(v){ return String(v ?? ""); }
+function pretty(v){ return JSON.stringify(v, null, 2); }
+
+function toast(message, err=false){
+  const t=document.getElementById("toast");
+  t.textContent=message; t.className="toast show"+(err?" err":"");
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer=setTimeout(()=>t.className="toast",5000);
+}
+
+async function api(path, options={}){
+  const res=await fetch(path,{...options,headers:{"Content-Type":"application/json",...(options.headers||{})}});
+  let body; try{body=await res.json()}catch{body={error:"Non-JSON response"}}
+  if(!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+  return body;
+}
+
+async function refresh(){
+  state=await api("/api/state");
+  for(const d of ["accounts","payments","cof"]){
+    const s=state.domains[d] || {};
+    const el=document.getElementById(d+"Status");
+    if(s.authorized){el.className="status ok";el.textContent="Authorised"}
+    else if(s.consent_id){el.className="status wait";el.textContent=s.consent_status || "AwaitingAuthorisation"}
+    else{el.className="status off";el.textContent="No consent"}
+    document.querySelectorAll(`[data-auth="${d}"]`).forEach(b=>b.disabled=!s.authorized);
+  }
+  const a=state.domains.accounts || {};
+  const select=document.getElementById("accountSelect");
+  const current=select.value;
+  select.innerHTML='<option value="">Select account</option>'+(a.account_ids||[]).map(id=>`<option value="${id}">${id}</option>`).join("");
+  if((a.account_ids||[]).includes(current)) select.value=current;
+
+  const params=new URLSearchParams(location.search);
+  if(params.get("authorized")){
+    selectedDomain=params.get("authorized");
+    history.replaceState(null,"","/");
+  }
+  renderSide(selectedDomain);
+}
+
+function renderSide(domain){
+  selectedDomain=domain;
+  const s=state?.domains?.[domain] || {};
+  document.getElementById("consentPanel").innerHTML=`
+    <div class="k">Domain</div><div>${esc(domain)}</div>
+    <div class="k">Status</div><div>${esc(s.consent_status || "—")}</div>
+    <div class="k">Consent ID</div><code>${esc(s.consent_id || "—")}</code>
+    <div class="k">Expires</div><div>${esc(s.expires || "—")}</div>
+    <div class="k">Permissions</div><div>${esc((s.permissions||[]).join(", ") || "—")}</div>`;
+  const pr=s.security||{};
+  const proofs={par:pr.par,pkce:pr.pkce,jar:pr.signed_request_object,mtls:pr.mtls,consent:pr.consent_id,id:pr.id_token_signature,at:pr.access_token_signature,cnf:pr.certificate_bound};
+  Object.entries(proofs).forEach(([k,v])=>{document.getElementById("p-"+k).className="proof "+(v?"ok":"no")});
+  document.getElementById("proofDetail").textContent=pr.detail || "Security evidence appears after authorization.";
+  document.getElementById("binding").textContent=pr.certificate_bound ? "✓ certificate-bound access token" : "Waiting for PSU token";
+  if(s.last_result) document.getElementById("result").textContent=pretty({http:s.last_http,data:s.last_result});
+}
+
+async function startAuth(domain){
+  try{
+    selectedDomain=domain;
+    document.getElementById("authBanner").textContent="Creating consent and PAR request…";
+    const out=await api("/api/start?domain="+encodeURIComponent(domain),{method:"POST",body:"{}"});
+    document.getElementById("authBanner").innerHTML=`Consent <code>${out.consent_id}</code> created. Real PSU authorization is ready.`;
+    await refresh();
+    document.getElementById("dlgConsent").textContent=out.consent_id;
+    document.getElementById("dlgUser").textContent=out.username;
+    document.getElementById("dlgPass").textContent=out.password;
+    document.getElementById("dlgContinue").onclick=()=>window.location.assign(out.auth_url);
+    document.getElementById("authDialog").showModal();
+  }catch(e){toast(e.message,true)}
+}
+
+async function action(domain,name,extra={}){
+  try{
+    selectedDomain=domain;
+    const out=await api("/api/action",{method:"POST",body:JSON.stringify({domain,action:name,...extra})});
+    document.getElementById("result").textContent=pretty(out);
+    await refresh(); renderSide(domain);
+  }catch(e){toast(e.message,true)}
+}
+
+function accountAction(name){
+  const account=document.getElementById("accountSelect").value;
+  if(!account){toast("View accounts, then select an account.",true);return}
+  action("accounts",name,{account_id:account});
+}
+
+function checkFunds(){
+  action("cof","check",{amount:document.getElementById("cofAmount").value,currency:document.getElementById("cofCurrency").value});
+}
+
+async function negativeTests(){
+  try{
+    const out=await api("/api/negative-tests",{method:"POST",body:"{}"});
+    document.getElementById("result").textContent=pretty(out);
+    toast(out.all_passed ? "All negative security tests passed." : "One or more negative tests failed.",!out.all_passed);
+  }catch(e){toast(e.message,true)}
+}
+
+refresh().catch(e=>toast(e.message,true));
+</script>
+</body>
+</html>
