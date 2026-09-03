@@ -966,6 +966,18 @@ func (p *Portal) completeAuthorization(ctx context.Context, fragment string) (st
 	if err != nil {
 		return "", fmt.Errorf("access token signature: %w", err)
 	}
+	// FS Accelerator binds the authorization-code token response to the
+	// approved consent explicitly. Require that binding before accepting
+	// the user access token.
+	responseConsentID := stringClaim(tokenResponse, "consent_id")
+	if responseConsentID != session.ConsentID {
+		return "", fmt.Errorf(
+			"token response consent_id mismatch: expected=%q actual=%q",
+			session.ConsentID,
+			responseConsentID,
+		)
+	}
+
 	if err := p.validateAccessClaims(accessClaims, session); err != nil {
 		return "", err
 	}
@@ -1084,9 +1096,18 @@ func (p *Portal) validateAccessClaims(claims map[string]any, session *AuthSessio
 	if !strings.Contains(" "+stringClaim(claims, "scope")+" ", " "+session.Scope+" ") {
 		return fmt.Errorf("access token missing %s scope", session.Scope)
 	}
-	if stringClaim(claims, "consent_id") != session.ConsentID {
-		return errors.New("access token consent_id mismatch")
+	// The FS JWT access-token claim provider converts the internal
+	// consent_id<UUID> authorization scope into the signed consent_id
+	// JWT claim. The Gateway consent-enforcement policy requires this claim.
+	jwtConsentID := stringClaim(claims, "consent_id")
+	if jwtConsentID != session.ConsentID {
+		return fmt.Errorf(
+			"access token consent_id mismatch: expected=%q actual=%q",
+			session.ConsentID,
+			jwtConsentID,
+		)
 	}
+
 	if err := validateJWTTime(claims); err != nil {
 		return err
 	}

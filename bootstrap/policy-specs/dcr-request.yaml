@@ -1,7 +1,7 @@
 category: Security
 name: dynamicClientRegistrationRequestPolicy
 displayName: Dynamic Client Registration Request Policy
-version: v2
+version: v3
 description: Validates and transforms Financial Services Dynamic Client Registration requests.
 applicableFlows: [request]
 supportedGateways: [Synapse]

@@ -1,0 +1,11 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: FinLink FS JWT Consent Compatibility
+Bundle-SymbolicName: com.acme.finlink.fs.jwt.consent.compat
+Bundle-Version: 1.0.0
+Bundle-Activator: com.acme.finlink.fscompat.Activator
+Import-Package: org.osgi.framework,
+ org.wso2.carbon.identity.oauth2,
+ org.wso2.carbon.identity.oauth2.authz,
+ org.wso2.carbon.identity.oauth2.token,
+ org.wso2.carbon.identity.oauth2.token.handlers.claims

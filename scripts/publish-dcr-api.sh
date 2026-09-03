@@ -29,7 +29,7 @@ DCR_RESPONSE_SPEC="bootstrap/policy-specs/dcr-response.yaml"
 
 POLICY_DIR=".state/policies"
 MTLS_J2="$POLICY_DIR/mtlsEnforcementPolicy.j2"
-DCR_REQUEST_J2="$POLICY_DIR/dynamicClientRegistrationRequestPolicy.j2"
+DCR_REQUEST_J2="bootstrap/policy-overrides/dynamicClientRegistrationRequestPolicy.j2"
 DCR_RESPONSE_J2="bootstrap/policy-overrides/dynamicClientRegistrationResponsePolicy.j2"
 
 STATE=".state/dcr-api"
@@ -295,7 +295,9 @@ configure_api() {
   local api_id="$1"
   local mtls_id="$2"
   local request_id="$3"
-  local response_id="$4"
+  local request_version="$4"
+  local response_id="$5"
+  local response_version="$6"
   local current out="$STATE/api-update.json" http
 
   current="$(
@@ -310,7 +312,9 @@ configure_api() {
       --arg pass "$IS_ADMIN_PASSWORD" \
       --arg mtls "$mtls_id" \
       --arg request "$request_id" \
-      --arg response "$response_id" '
+      --arg request_version "$request_version" \
+      --arg response "$response_id" \
+      --arg response_version "$response_version" '
       .context = "/open-banking"
       | .version = "v3.3.0"
       | .isDefaultVersion = false
@@ -354,7 +358,7 @@ configure_api() {
                 },
                 {
                   policyName:"dynamicClientRegistrationRequestPolicy",
-                  policyVersion:"v2",
+                  policyVersion:$request_version,
                   policyId:$request,
                   policyType:"api",
                   parameters:{
@@ -375,7 +379,7 @@ configure_api() {
                   [
                     {
                       policyName:"dynamicClientRegistrationResponsePolicy",
-                      policyVersion:"v2",
+                      policyVersion:$response_version,
                       policyId:$response,
                       policyType:"api",
                       parameters:{}
@@ -811,11 +815,22 @@ echo "============================================================"
 echo "DCR API — CONFIGURE ENDPOINT + POLICIES"
 echo "============================================================"
 
+REQUEST_VERSION="$(awk '/^version:/{print $2; exit}' "$DCR_REQUEST_SPEC")"
+RESPONSE_VERSION="$(awk '/^version:/{print $2; exit}' "$DCR_RESPONSE_SPEC")"
+
+[[ -n "$REQUEST_VERSION" ]] ||
+  die "could not resolve DCR request policy version"
+
+[[ -n "$RESPONSE_VERSION" ]] ||
+  die "could not resolve DCR response policy version"
+
 configure_api \
   "$API_ID" \
   "$MTLS_ID" \
   "$REQUEST_ID" \
-  "$RESPONSE_ID"
+  "$REQUEST_VERSION" \
+  "$RESPONSE_ID" \
+  "$RESPONSE_VERSION"
 
 ok "mTLS is first in every DCR request flow"
 ok "DCR Request Policy is attached to every operation"

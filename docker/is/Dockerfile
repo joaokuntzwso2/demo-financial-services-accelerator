@@ -73,6 +73,43 @@ COPY --from=configmerge /work/deployment.toml \
 COPY --chown=wso2carbon:wso2 --chmod=0644 \
   dist/fs-is-accelerator-libs/org.wso2.financial.services.accelerator.identity.extensions-4.0.0.jar \
   ${WSO2_SERVER_HOME}/repository/components/dropins/org.wso2.financial.services.accelerator.identity.extensions-4.0.0.jar
+# Build the FinLink FS JWT consent compatibility provider.
+#
+# Financial Services Accelerator 4.0.0 carries the consent identifier as an
+# internal consent_id<UUID> scope during the authorization-code flow. The
+# APIM Financial Services consent-enforcement mediator requires that value as
+# the signed JWT access-token claim "consent_id".
+#
+# Compile this small compatibility bundle against the exact IS 7.2 runtime
+# libraries in the image instead of committing another opaque binary JAR.
+COPY docker/is/fs-jwt-consent-compat /tmp/fs-jwt-consent-compat
+
+RUN set -eux; \
+  mkdir -p /tmp/fs-jwt-consent-compat/classes; \
+  OAUTH_JAR="$(find "${WSO2_SERVER_HOME}/repository/components/plugins" -maxdepth 1 -type f -name 'org.wso2.carbon.identity.oauth_*.jar' | head -1)"; \
+  OSGI_JAR="$(find "${WSO2_SERVER_HOME}/repository/components/plugins" -maxdepth 1 -type f -name 'org.eclipse.osgi_*.jar' | head -1)"; \
+  IDENTITY_BASE_JAR="$(find "${WSO2_SERVER_HOME}/repository/components/plugins" -maxdepth 1 -type f -name 'org.wso2.carbon.identity.base_*.jar' | head -1)"; \
+  test -n "$OAUTH_JAR"; \
+  test -n "$OSGI_JAR"; \
+  test -n "$IDENTITY_BASE_JAR"; \
+  echo "OAuth compile dependency: $OAUTH_JAR"; \
+  echo "OSGi compile dependency: $OSGI_JAR"; \
+  echo "Identity base compile dependency: $IDENTITY_BASE_JAR"; \
+  javac \
+    -cp "${OAUTH_JAR}:${OSGI_JAR}:${IDENTITY_BASE_JAR}" \
+    -d /tmp/fs-jwt-consent-compat/classes \
+    /tmp/fs-jwt-consent-compat/ConsentJWTAccessTokenClaimProvider.java \
+    /tmp/fs-jwt-consent-compat/Activator.java; \
+  jar cfm \
+    "${WSO2_SERVER_HOME}/repository/components/dropins/finlink-fs-jwt-consent-compat-1.0.0.jar" \
+    /tmp/fs-jwt-consent-compat/MANIFEST.MF \
+    -C /tmp/fs-jwt-consent-compat/classes .; \
+  jar tf \
+    "${WSO2_SERVER_HOME}/repository/components/dropins/finlink-fs-jwt-consent-compat-1.0.0.jar" \
+    | grep -q \
+      "com/acme/finlink/fscompat/ConsentJWTAccessTokenClaimProvider.class"; \
+  rm -rf /tmp/fs-jwt-consent-compat
+
 RUN chown wso2carbon:wso2 \
   ${WSO2_SERVER_HOME}/repository/conf/deployment.toml
 USER wso2carbon

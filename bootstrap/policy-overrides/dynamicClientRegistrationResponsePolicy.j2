@@ -16,9 +16,42 @@
 
 <filter source="$ctx:HttpStatus" regex="^(200|201)$">
     <then>
-        <enrich>
-            <source clone="true" xpath="json-eval($.token_type_extension,$.client_name,$.require_signed_request_object,$.tls_client_certificate_bound_access_tokens,$.jwks_uri,$.ext_application_display_name)"/>
-            <target type="body" action="remove"/>
-        </enrich>
+        <!--
+          jwks_uri is not stable in the IS DCR GET representation: it may be
+          present or absent for this tls_client_auth registration profile,
+          while the verified PUT representation includes it.
+
+          Synapse enrich action="remove" fails when a selected JSONPath is
+          absent. GET therefore removes jwks_uri conditionally, while POST
+          and PUT retain the complete response-field removal set.
+        -->
+        <filter source="$ctx:REST_METHOD" regex="^GET$">
+            <then>
+                <enrich>
+                    <source clone="true" xpath="json-eval($.token_type_extension,$.client_name,$.require_signed_request_object,$.tls_client_certificate_bound_access_tokens,$.ext_application_display_name)"/>
+                    <target type="body" action="remove"/>
+                </enrich>
+
+                <!--
+                  jwks_uri is optional in the IS DCR GET representation.
+                  Remove it only when it is present so Enrich never receives
+                  a missing JSONPath.
+                -->
+                <filter source="json-eval($.jwks_uri)" regex=".+">
+                    <then>
+                        <enrich>
+                            <source clone="true" xpath="json-eval($.jwks_uri)"/>
+                            <target type="body" action="remove"/>
+                        </enrich>
+                    </then>
+                </filter>
+            </then>
+            <else>
+                <enrich>
+                    <source clone="true" xpath="json-eval($.token_type_extension,$.client_name,$.require_signed_request_object,$.tls_client_certificate_bound_access_tokens,$.jwks_uri,$.ext_application_display_name)"/>
+                    <target type="body" action="remove"/>
+                </enrich>
+            </else>
+        </filter>
     </then>
 </filter>

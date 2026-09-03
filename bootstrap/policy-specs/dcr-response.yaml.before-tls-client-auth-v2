@@ -1,8 +1,0 @@
-category: Mediation
-name: dynamicClientRegistrationResponsePolicy
-displayName: Dynamic Client Registration Response Policy
-version: v1
-description: Removes Identity Server-only metadata from Financial Services DCR responses.
-applicableFlows: [response]
-supportedGateways: [Synapse]
-supportedApiTypes: [HTTP]

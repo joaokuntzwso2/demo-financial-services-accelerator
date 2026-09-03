@@ -225,7 +225,7 @@ json_path = "/id_token/openbanking_intent_id/value"
 
 [financial_services.identity]
 consent_id_claim_name = "consent_id"
-append_consent_id_to_access_token = true
+append_consent_id_to_access_token=true
 append_consent_id_to_authz_id_token = true
 
 [financial_services.http_connection_pool]

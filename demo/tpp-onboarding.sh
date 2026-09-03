@@ -287,9 +287,14 @@ map_dcr_client_to_apim() {
   local app_id="$2"
   local client_id="$3"
   local client_secret="$4"
+
   local response="$STATE_DIR/apim-map-keys.json"
   local payload="$STATE_DIR/apim-map-keys-request.json"
-  local http
+  local list="$STATE_DIR/apim-oauth-keys.json"
+  local selected="$STATE_DIR/apim-oauth-key-selected.json"
+  local detail="$STATE_DIR/apim-oauth-key-detail.json"
+
+  local http lookup_http detail_http mapping_id
 
   jq -nc \
     --arg ck "$client_id" \
@@ -317,10 +322,80 @@ map_dcr_client_to_apim() {
       --data-binary @"$payload"
   )"
 
-  if [[ "$http" != "200" && "$http" != "201" ]]; then
+  if [[ "$http" == "200" || "$http" == "201" ]]; then
+
+    echo "[OK] DCR client mapping created in APIM"
+
+  elif [[ "$http" == "409" ]]; then
+
+    echo "[RESUME] APIM reports that a key mapping already exists"
+    echo "[RESUME] Verifying that it belongs to the same DCR client"
+
+    lookup_http="$(
+      curl -sS \
+        --cacert "$CA" \
+        -o "$list" \
+        -w '%{http_code}' \
+        -H "Authorization: Bearer $dp_token" \
+        "$APIM_URL/api/am/devportal/v3/applications/$app_id/oauth-keys"
+    )"
+
+    [[ "$lookup_http" == "200" ]] ||
+      die "could not inspect existing APIM OAuth mappings (HTTP $lookup_http)"
+
+    jq \
+      --arg km "$KEY_MANAGER_NAME" \
+      --arg ck "$client_id" '
+        [
+          (.list // [])[]
+          | select(
+              .keyType == "PRODUCTION"
+              and .keyManager == $km
+              and .consumerKey == $ck
+            )
+        ]
+        | .[0] // empty
+      ' "$list" > "$selected"
+
+    mapping_id="$(
+      jq -r \
+        '.keyMappingId // empty' \
+        "$selected"
+    )"
+
+    [[ -n "$mapping_id" ]] ||
+      die "APIM returned 409 but no existing mapping matches the DCR client"
+
+    detail_http="$(
+      curl -sS \
+        --cacert "$CA" \
+        -o "$detail" \
+        -w '%{http_code}' \
+        -H "Authorization: Bearer $dp_token" \
+        "$APIM_URL/api/am/devportal/v3/applications/$app_id/oauth-keys/$mapping_id"
+    )"
+
+    [[ "$detail_http" == "200" ]] ||
+      die "could not read existing APIM OAuth mapping $mapping_id (HTTP $detail_http)"
+
+    jq -e \
+      --arg mapping "$mapping_id" \
+      --arg ck "$client_id" '
+        .keyMappingId == $mapping
+        and .consumerKey == $ck
+        and .keyType == "PRODUCTION"
+        and .mode == "MAPPED"
+      ' "$detail" >/dev/null ||
+      die "existing APIM key mapping detail does not match the selected DCR mapping"
+
+    echo "[OK] Existing APIM mapping verified for the same DCR client"
+
+  else
+
     echo "APIM OOB mapping response:" >&2
     cat "$response" >&2 || true
     die "mapping DCR client into APIM failed (HTTP $http)"
+
   fi
 
   mkdir -p "$ACCESS_STATE"
@@ -441,7 +516,11 @@ render_summary() {
     "IS application        \(.client.is_application_id)",
     "APIM application      \(.apim.name) (\(.apim.application_id))",
     "API subscriptions     \(.apim.subscription_count)",
-    "DCR create            HTTP \(.proof.create_http)",
+    (if .proof.create_mode == "created" then
+       "DCR create            HTTP \(.proof.create_http)"
+     else
+       "DCR registration      reused existing client (no CREATE)"
+     end),
     "DCR read              HTTP \(.proof.read_http)",
     "DCR update            HTTP \(.proof.update_http)",
     "FinLink client match  \(.proof.finlink_client_match)"
@@ -743,38 +822,59 @@ echo "[OK] FinLink-signed registration request created"
 
 echo
 echo "============================================================"
-echo "4. REAL FINANCIAL SERVICES DCR — CREATE CLIENT"
+echo "4. REAL FINANCIAL SERVICES DCR — MATERIALIZE CLIENT"
 echo "============================================================"
 
-CREATE_HTTP="$(
-  curl -sS \
-    --cacert "$CA" \
-    --cert "$TPP_CERT" \
-    --key "$TPP_KEY" \
-    -o "$REGISTRATION_FILE" \
-    -w '%{http_code}' \
-    -X POST "$DCR_URL" \
-    -H 'Content-Type: application/jwt' \
-    -H 'Accept: application/json' \
-    --data-binary @"$REG_REQUEST_FILE"
-)"
+DCR_CREATE_MODE="created"
+CREATE_HTTP="null"
 
-echo "HTTP=$CREATE_HTTP"
+if [[ "$FRESH" == "0" && -s "$REGISTRATION_FILE" ]]; then
 
-if [[ "$CREATE_HTTP" != "200" && "$CREATE_HTTP" != "201" ]]; then
-  cat "$REGISTRATION_FILE" >&2 || true
-  die "Financial Services DCR create failed (HTTP $CREATE_HTTP)"
+  DCR_CREATE_MODE="reused_existing_registration"
+
+  echo "[RESUME] Existing DCR registration found"
+  echo "[RESUME] No POST /register will be executed"
+
+  CLIENT_ID="$(jq -er '.client_id' "$REGISTRATION_FILE")"
+  CLIENT_SECRET="$(jq -er '.client_secret' "$REGISTRATION_FILE")"
+
+  echo "Client ID: $CLIENT_ID"
+  echo "Client secret: [reused from .state/dcr only]"
+
+else
+
+  CREATE_HTTP="$(
+    curl -sS \
+      --cacert "$CA" \
+      --cert "$TPP_CERT" \
+      --key "$TPP_KEY" \
+      -o "$REGISTRATION_FILE" \
+      -w '%{http_code}' \
+      -X POST "$DCR_URL" \
+      -H 'Content-Type: application/jwt' \
+      -H 'Accept: application/json' \
+      --data-binary @"$REG_REQUEST_FILE"
+  )"
+
+  echo "HTTP=$CREATE_HTTP"
+
+  if [[ "$CREATE_HTTP" != "200" && "$CREATE_HTTP" != "201" ]]; then
+    cat "$REGISTRATION_FILE" >&2 || true
+    die "Financial Services DCR create failed (HTTP $CREATE_HTTP)"
+  fi
+
+  chmod 600 \
+    "$REGISTRATION_FILE" \
+    2>/dev/null || true
+
+  CLIENT_ID="$(jq -er '.client_id' "$REGISTRATION_FILE")"
+  CLIENT_SECRET="$(jq -er '.client_secret' "$REGISTRATION_FILE")"
+
+  echo "Client ID: $CLIENT_ID"
+  echo "Client secret: [stored only under .state/dcr]"
+
 fi
 
-chmod 600 \
-  "$REGISTRATION_FILE" \
-  2>/dev/null || true
-
-CLIENT_ID="$(jq -er '.client_id' "$REGISTRATION_FILE")"
-CLIENT_SECRET="$(jq -er '.client_secret' "$REGISTRATION_FILE")"
-
-echo "Client ID: $CLIENT_ID"
-echo "Client secret: [stored only under .state/dcr]"
 echo
 
 jq '
@@ -802,10 +902,15 @@ jq -e \
     and .id_token_signed_response_alg == "PS256"
     and .request_object_signing_alg == "PS256"
   ' "$REGISTRATION_FILE" >/dev/null ||
-  die "public DCR response does not preserve the expected registration metadata"
+  die "public DCR registration metadata does not match the expected client profile"
 
-echo "[OK] DCR created the OAuth client and returned the expected public registration metadata"
-echo "[OK] Identity Server-only FAPI metadata was removed by the DCR response policy"
+if [[ "$DCR_CREATE_MODE" == "created" ]]; then
+  echo "[OK] DCR created the OAuth client and returned the expected public registration metadata"
+  echo "[OK] Identity Server-only FAPI metadata was removed by the DCR response policy"
+else
+  echo "[OK] Existing DCR registration metadata verified"
+  echo "[OK] Existing client reused without executing DCR CREATE"
+fi
 
 echo
 echo "============================================================"
@@ -1188,6 +1293,7 @@ jq -nc \
   --argjson roles "$ROLES" \
   --argjson grants "$GRANTS" \
   --arg token_fp "$TOKEN_FP" \
+  --arg create_mode "$DCR_CREATE_MODE" \
   --argjson create_http "$CREATE_HTTP" \
   --argjson read_http 200 \
   --argjson update_http "$UPDATE_HTTP" '
@@ -1229,6 +1335,7 @@ jq -nc \
       subscription_count:$subscription_count
     },
     proof:{
+      create_mode:$create_mode,
       create_http:$create_http,
       read_http:$read_http,
       update_http:$update_http,

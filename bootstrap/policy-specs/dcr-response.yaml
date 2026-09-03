@@ -1,7 +1,7 @@
 category: Mediation
 name: dynamicClientRegistrationResponsePolicy
 displayName: Dynamic Client Registration Response Policy
-version: v2
+version: v7
 description: Removes Identity Server-only metadata returned for the tls_client_auth Financial Services DCR profile.
 applicableFlows: [response]
 supportedGateways: [Synapse]
